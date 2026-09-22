@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("./data")
     # Where evaluation reports are written
     eval_dir: Path = Path("./eval")
+    # Keep the uploaded PDF so the corpus can be re-chunked without it being re-supplied
+    keep_source_pdf: bool = True
 
     # Chunking
     chunk_tokens: int = 500

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from app.config import get_settings
+from app.db import Database
 from app.errors import AppError
 from app.indexer import index_pdf
 from app.providers import OpenAIEmbedder
@@ -26,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     settings = get_settings()
-    store = VectorStore(settings.data_dir)
+    store = VectorStore(Database(settings.data_dir / "app.db"), settings.data_dir)
     store.load()
     embedder = OpenAIEmbedder(settings)
 

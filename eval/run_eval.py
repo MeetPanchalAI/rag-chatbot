@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 
 from app.config import get_settings
+from app.db import Database
 from app.evaluation import load_questions, run_evaluation, write_report
 from app.main import Providers
 from app.vector_store import VectorStore
@@ -27,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = get_settings()
-    store = VectorStore(settings.data_dir)
+    store = VectorStore(Database(settings.data_dir / "app.db"), settings.data_dir)
     store.load()
     if store.chunk_count == 0:
         print("The index is empty. Ingest a PDF first.")

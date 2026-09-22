@@ -49,3 +49,13 @@ class FileTooLarge(AppError):
 class EvaluationRunning(AppError):
     status_code = 409
     code = "evaluation_running"
+
+
+class ConversationNotFound(AppError):
+    status_code = 404
+    code = "conversation_not_found"
+
+
+class EvalRunNotFound(AppError):
+    status_code = 404
+    code = "eval_run_not_found"

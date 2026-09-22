@@ -63,6 +63,11 @@ class ChatRequest(BaseModel):
     doc_id: str | None = Field(
         default=None, description="Restrict the search to one document. Omit to search all."
     )
+    conversation_id: str | None = Field(
+        default=None,
+        description="Continue a stored conversation. The server then supplies the "
+        "history and records both turns. Omit it and pass `history` to stay stateless.",
+    )
     history: list[Message] = Field(default_factory=list, max_length=100)
     debug: bool = False
 
@@ -109,17 +114,67 @@ class HealthResponse(BaseModel):
     chunks: int
 
 
+# --- API: conversations ---
+
+
+class StoredMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    answerable: bool | None = None
+    citations: list["Citation"] = Field(default_factory=list)
+    trace: "Trace | None" = None
+    created_at: str
+
+
+class Conversation(BaseModel):
+    id: str
+    title: str
+    doc_id: str | None = None
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+    messages: list[StoredMessage] = Field(default_factory=list)
+
+
+class NewConversation(BaseModel):
+    title: str = Field(default="New chat", max_length=200)
+    doc_id: str | None = None
+
+
 # --- API: evaluation ---
 
 
 class EvalRequest(BaseModel):
     doc_id: str | None = None
+    label: str | None = Field(default=None, max_length=120,
+                              description="A note about what changed for this run.")
+
+
+class EvalRunInfo(BaseModel):
+    """One row in the run history."""
+
+    run_id: int
+    label: str | None = None
+    status: str
+    doc_id: str | None = None
+    total: int
+    done: int
+    started_at: str
+    finished_at: str | None = None
+    summary: dict[str, str] | None = None
+    headline: list[dict] = Field(default_factory=list)
+    knobs: dict[str, str] = Field(default_factory=dict)
+    error: str | None = None
 
 
 class EvalStatus(BaseModel):
+    run_id: int | None = None
     running: bool = False
     done: int = 0
     total: int = 0
+    started_at: str | None = None
+    finished_at: str | None = None
+    knobs: dict[str, str] = Field(default_factory=dict)
     summary: dict[str, str] | None = None
     headline: list[dict] = Field(default_factory=list)
     distribution: list[str] = Field(default_factory=list)

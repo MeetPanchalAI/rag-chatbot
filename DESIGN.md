@@ -79,21 +79,42 @@ rewrite that comes back empty or rambling is discarded in favour of the original
 question. History is used to interpret the question and never enters the
 evidence.
 
-## Embeddings and vector store
+## Embeddings and storage
 
 `text-embedding-3-small` keeps embedding and generation with one provider and
 one key.
 
-Storage is local files: chunks in JSON Lines, embeddings in one numpy array,
-document metadata in JSON. Vectors are stored normalised, so search is a single
-matrix multiply. At tens of thousands of chunks that is well under a
-millisecond, far smaller than the network call that precedes it.
+Everything durable lives in one SQLite file, `data/app.db`: documents, chunks
+with their vectors, conversations, and evaluation runs with their results. The
+original PDFs sit beside it in `data/documents/`.
 
-This is a deliberate trade. A hosted vector database buys metadata filtering,
-concurrent writers and larger-than-memory corpora, and costs a service to run
-and configure. None of those are needed to answer questions about a document
-set that fits in memory. The `VectorStore` interface is small enough that
-swapping it is contained work.
+**Why the vectors are in the database and the PDFs are not.** A PDF is only ever
+read whole, so a blob in a table makes every scan and backup carry weight for
+nothing; it belongs on disk. A vector is the opposite. Chunks and embeddings
+used to be two files kept in step by line order, with nothing enforcing it —
+which is precisely why a document could not be deleted. In one row they are
+written in the same transaction and deleted together.
+
+At load the vectors are stacked into a single numpy matrix, so search is what it
+always was: one matrix multiply, well under a millisecond at tens of thousands
+of chunks and far smaller than the embedding call before it. SQLite is the
+durable copy; the matrix is a cache of it.
+
+A hosted vector database earns its place when the corpus outgrows memory or
+needs concurrent writers. Neither is true here, and SQLite costs nothing to run.
+
+| Kept | Where | Why |
+| --- | --- | --- |
+| Documents, chunks, vectors | `app.db` | One transaction, deletable together |
+| Original PDFs | `data/documents/` | Read whole; would bloat every query |
+| Conversations and messages | `app.db` | Survive a cleared browser, with citations and traces |
+| Evaluation runs and results | `app.db` | Comparing runs is the point of running them |
+| Reports | `eval/results.md`, `.jsonl` | Readable artefacts of the latest run |
+
+**This is beyond the brief.** The brief asks for a searchable representation and
+says nothing about persistence. It was added because run-to-run comparison is
+what makes evaluation useful, and because a corpus you cannot re-chunk or delete
+from is awkward to iterate on.
 
 ## Citations
 
@@ -231,8 +252,11 @@ human read of `results.md`, which lists every failure.
   These differ in any document with front matter.
 - **Parsing is pure Python** and therefore slow: minutes for a long book.
   Ingestion is a one-off cost, but it is not fast.
-- **Single process.** Writes are locked within a process, but two servers
-  sharing a data directory would corrupt the index.
+- **Single writer.** SQLite runs in WAL mode with one connection per thread and
+  serialised writes, which is fine for one process. Several servers sharing a
+  data directory would still contend.
+- **No authentication.** Conversations are not scoped to a user, because there
+  are no users. Anyone reaching the API sees all of them.
 - **The keyword screen cannot judge answer quality.** An LLM judge would scale
   this, at the cost of its own bias.
 
@@ -248,7 +272,7 @@ citation quality.
 | Chunk size | 500 tokens, 75 overlap | Coherent passages, precise retrieval | Boundaries can still split an answer |
 | Headings | Table of contents first | Authoritative, no guessing | Falls back to page-only citations |
 | Embedded text | Prefixed with section title | Anchors context-free chunks | Slightly more tokens to embed |
-| Vector store | Local files + numpy | No service to run; fast enough | Not shared, not larger than memory |
+| Storage | SQLite + numpy in memory | One transaction, no service to run | Single writer, not larger than memory |
 | Citations | Evidence positions, resolved by us | Invented pages cannot reach the user | Needs guard logic |
 | Abstention | Model's judgement, no threshold | Cosine scores are poorly calibrated | Measured rather than assumed |
 | Follow-ups | Rewrite only when history exists | Follow-ups fail without it | One extra model call |

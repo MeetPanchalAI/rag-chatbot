@@ -35,9 +35,14 @@ Then open **http://127.0.0.1:8000** for the UI, or `/docs` for the API.
 | `GET /health` | Service status and how much is indexed |
 | `GET /documents` | What has been ingested, with document ids |
 | `POST /ingest` | Upload a PDF (multipart). Small files only; see the note below |
+| `DELETE /documents/{id}` | Remove a document, its chunks and its stored PDF |
 | `POST /chat` | Ask a question |
+| `GET`/`POST /conversations` | List or start a stored conversation |
+| `GET`/`DELETE /conversations/{id}` | Read one back, or remove it |
 | `POST /eval/run` | Start an evaluation run |
-| `GET /eval/status` | Progress and results of that run |
+| `GET /eval/status` | Progress and results of the latest run |
+| `GET /eval/runs` | Every past run, newest first |
+| `GET`/`DELETE /eval/runs/{id}` | Read a past run in full, or remove it |
 
 ## The UI
 
@@ -46,9 +51,12 @@ One page at `/`, enough to exercise everything without a REST client:
 - **Upload a PDF** and watch the page and chunk counts change.
 - **Ask questions**, with follow-ups; citations appear under each answer and a
   refusal is styled differently from an answer.
-- **Keep several conversations** side by side and switch between them. The
-  server holds no session (history travels with each request), so these cost
-  nothing on the backend and live in the browser.
+- **Keep several conversations** side by side. They are stored server side, so
+  they survive a cleared browser and come back with their citations and
+  retrieval traces intact.
+- **Remove a document** you are done with, chunks and stored PDF together.
+- **Label an evaluation run** with what you changed, and click any past run to
+  read it back.
 - **Show what was retrieved** puts every retrieved chunk, its score, and which
   ones became evidence under the reply.
 - **Scope the search** to one document or leave it across all of them.
@@ -84,7 +92,9 @@ curl -X POST localhost:8000/chat -H "content-type: application/json" -d '{
 ```
 
 Optional fields: `doc_id` to search one document instead of all of them,
-`history` for follow-up questions, and `debug: true` to see what was retrieved.
+`debug: true` to see what was retrieved, and for follow-ups either `history`
+(stateless, nothing is stored) or `conversation_id` (the server supplies the
+history and records both turns).
 
 ### Follow-up questions
 
@@ -185,6 +195,12 @@ The API works with any OpenAI-compatible endpoint via `OPENAI_BASE_URL`.
 - **Scanned PDFs** are rejected with a clear error. There is no OCR.
 - **Page numbers** are PDF page positions, not the numbers printed on the page.
   In a document with front matter the two differ.
-- The index lives in `DATA_DIR` as plain files and is not committed.
+- **Storage** is one SQLite file, `DATA_DIR/app.db`, holding documents, chunks
+  with their vectors, conversations and evaluation runs. Original PDFs sit in
+  `DATA_DIR/documents/` so a corpus can be re-chunked later without being
+  re-supplied; set `KEEP_SOURCE_PDF=false` to skip that. Nothing in `DATA_DIR`
+  is committed.
+- **An older index** written as `chunks.jsonl` + `embeddings.npy` is imported
+  automatically on first start, and the old files are renamed `*.migrated`.
 
 Full design rationale, trade-offs and limitations: [DESIGN.md](DESIGN.md).

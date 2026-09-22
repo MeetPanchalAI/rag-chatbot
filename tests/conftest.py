@@ -14,6 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 from app.config import Settings
+from app.db import Database
 from app.schemas import Chunk, RetrievedChunk
 from app.vector_store import VectorStore
 
@@ -150,8 +151,15 @@ def settings(tmp_path) -> Settings:
 
 
 @pytest.fixture
-def store(settings) -> VectorStore:
-    return VectorStore(settings.data_dir)
+def db(settings) -> Database:
+    return Database(settings.data_dir / "app.db")
+
+
+@pytest.fixture
+def store(db, settings) -> VectorStore:
+    store = VectorStore(db, settings.data_dir)
+    store.load()
+    return store
 
 
 @pytest.fixture

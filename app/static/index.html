@@ -274,6 +274,24 @@ table.grid td.id { font-family: ui-monospace, SFMono-Regular, Consolas, monospac
 .pill.no { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .scroll { overflow-x: auto; margin: 4px -6px 0; padding: 0 6px; }
 .foot { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+#label {
+  font: inherit; font-size: 13.5px; flex: 1; min-width: 180px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: var(--r-s); padding: 7px 11px;
+}
+#label:focus { outline: none; border-color: var(--accent); }
+.runrow {
+  display: flex; align-items: center; gap: 12px; padding: 9px 10px;
+  border-radius: var(--r-s); cursor: pointer; border: 1px solid transparent;
+}
+.runrow:hover { background: var(--raised); }
+.runrow.on { background: var(--accent-bg); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.runrow .when { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.runrow .what { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runrow .mini { display: flex; gap: 10px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.runrow .mini b { font-weight: 600; }
+.runrow .kill { opacity: 0; padding: 2px 6px; font-size: 15px; line-height: 1; }
+.runrow:hover .kill { opacity: .8; }
 ul.fails { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 ul.fails li { margin-bottom: 4px; }
 
@@ -345,12 +363,14 @@ ul.fails li { margin-bottom: 4px; }
             model calls each, so expect it to take about a minute.
           </p>
           <div class="actions">
+            <input id="label" placeholder="What changed? (optional label)" maxlength="120">
             <button class="primary" id="run">Run evaluation</button>
             <span class="say" id="says"></span>
           </div>
           <div class="track" id="track" hidden><i></i></div>
           <p class="say err" id="errs"></p>
         </div>
+        <div id="history"></div>
         <div id="out"></div>
       </div>
     </div>
@@ -359,8 +379,6 @@ ul.fails li { margin-bottom: 4px; }
 
 <script>
 const $ = (id) => document.getElementById(id);
-const KEY = 'rag-chatbot-conversations';
-const TURNS = 3;
 const SEEDS = [
   'What are the eligibility requirements?',
   'What is the maximum amount allowed?',
@@ -391,32 +409,56 @@ function el(tag, cls, text) {
 }
 const pct = (v) => v === null || v === undefined ? '—' : Math.round(v * 100) + '%';
 
-/* Storage is a convenience, never the source of truth: it throws in a private
-   window, and the page has to work without it. */
-function save() { try { localStorage.setItem(KEY, JSON.stringify(chats)); } catch {} }
-function restore() {
-  try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : []; }
-  catch { return []; }
-}
-
 /* ---------- conversations ----------
-   The server keeps no session: history travels with every request. So extra
-   conversations cost the backend nothing and live entirely in the browser. */
+   Stored server side, so they survive a cleared browser and can be read back
+   with their citations and retrieval traces intact. The chat endpoint is still
+   stateless underneath: pass `history` instead of a conversation_id and nothing
+   is written, which is the path the evaluation uses. */
 
 const active = () => chats.find(c => c.id === activeId);
+const POST = (body) => ({
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
-function newChat() {
-  chats.unshift({ id: Date.now().toString(36), title: 'New chat', turns: [] });
-  activeId = chats[0].id;
-  save(); drawChats(); drawLog(); $('q').focus();
+async function loadChats() {
+  try { chats = await api('/conversations'); } catch { chats = []; }
+  if (!chats.length) return newChat();
+  if (!chats.some(c => c.id === activeId)) activeId = chats[0].id;
+  drawChats();
+  await openChat(activeId);
 }
 
-function dropChat(id, ev) {
+async function newChat() {
+  try {
+    const created = await api('/conversations', POST({}));
+    chats.unshift(created);
+    activeId = created.id;
+  } catch (e) {
+    $('upNote').textContent = e.message;
+    return;
+  }
+  drawChats(); drawLog(); $('q').focus();
+}
+
+async function openChat(id) {
+  activeId = id;
+  drawChats();
+  try {
+    const full = await api('/conversations/' + id);
+    const at = chats.findIndex(c => c.id === id);
+    if (at >= 0) chats[at] = full;
+  } catch { /* leave what we have */ }
+  drawLog();
+}
+
+async function dropChat(id, ev) {
   ev.stopPropagation();
+  try { await api('/conversations/' + id, { method: 'DELETE' }); } catch {}
   chats = chats.filter(c => c.id !== id);
   if (activeId === id) activeId = chats.length ? chats[0].id : null;
   if (!chats.length) return newChat();
-  save(); drawChats(); drawLog();
+  drawChats(); await openChat(activeId);
 }
 
 function drawChats() {
@@ -431,7 +473,7 @@ function drawChats() {
     kill.title = 'Delete this conversation';
     kill.onclick = (ev) => dropChat(c.id, ev);
     row.append(kill);
-    row.onclick = () => { activeId = c.id; drawChats(); drawLog(); };
+    row.onclick = () => openChat(c.id);
     box.append(row);
   }
 }
@@ -443,7 +485,7 @@ function drawLog() {
   log.innerHTML = '';
   const chat = active();
 
-  if (!chat || !chat.turns.length) {
+  if (!chat || !(chat.messages || []).length) {
     const w = el('div', 'welcome');
     w.append(el('h2', null, 'Ask the document'));
     w.append(el('p', null, 'Answers come only from what was retrieved, with the page and section they came from.'));
@@ -459,7 +501,7 @@ function drawLog() {
   }
 
   const thread = el('div', 'thread');
-  for (const t of chat.turns) thread.append(drawTurn(t));
+  for (const m of chat.messages) thread.append(drawTurn(m));
   log.append(thread);
   log.scrollTop = log.scrollHeight;
 }
@@ -470,10 +512,11 @@ function drawTurn(t) {
     n.append(el('div', 'body', t.content));
     return n;
   }
-  const n = el('div', 'msg bot' + (t.refused ? ' no' : ''));
+  const refused = t.refused || t.answerable === false;
+  const n = el('div', 'msg bot' + (refused ? ' no' : ''));
   const who = el('div', 'who');
   who.append(el('span', null, 'Assistant'));
-  if (t.refused) who.append(el('span', 'flag', 'NOT IN THE DOCUMENT'));
+  if (refused) who.append(el('span', 'flag', 'NOT IN THE DOCUMENT'));
   n.append(who);
   n.append(el('div', 'body', t.content));
 
@@ -555,6 +598,22 @@ function docRow(name, meta, id) {
   const grow = el('div', 'grow');
   grow.append(el('div', 't', name), el('div', 's', meta));
   row.append(radio, grow);
+
+  if (id) {
+    const kill = el('button', 'ghost kill', '×');
+    kill.title = 'Remove this document and its chunks';
+    kill.onclick = async (ev) => {
+      ev.preventDefault(); ev.stopPropagation();   // do not also tick the radio
+      if (!confirm(`Remove "${name}" from the index?`)) return;
+      try {
+        await api('/documents/' + id, { method: 'DELETE' });
+        if (docId === id) docId = null;
+        $('upNote').textContent = `Removed ${name}.`;
+        await Promise.all([drawStatus(), drawDocs()]);
+      } catch (e) { $('upNote').textContent = e.message; }
+    };
+    row.append(kill);
+  }
   return row;
 }
 
@@ -592,10 +651,11 @@ $('composer').onsubmit = async (ev) => {
   if (!question) return;
 
   const chat = active();
-  const history = chat.turns.map(t => ({ role: t.role, content: t.content })).slice(-TURNS * 2);
+  if (!chat) return;
 
-  chat.turns.push({ role: 'user', content: question });
-  if (chat.turns.length === 1) {
+  chat.messages = chat.messages || [];
+  chat.messages.push({ role: 'user', content: question });
+  if (chat.messages.length === 1) {
     chat.title = question.length > 40 ? question.slice(0, 40) + '…' : question;
     drawChats();
   }
@@ -614,19 +674,18 @@ $('composer').onsubmit = async (ev) => {
   $('log').scrollTop = $('log').scrollHeight;
 
   try {
-    const r = await api('/chat', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ question, doc_id: docId, history, debug: $('debug').checked }),
-    });
-    chat.turns.push({
+    // The server owns the history for a stored conversation, so none is sent.
+    const r = await api('/chat', POST({
+      question, doc_id: docId, conversation_id: chat.id, debug: $('debug').checked,
+    }));
+    chat.messages.push({
       role: 'assistant', content: r.answer, citations: r.citations,
-      refused: !r.answerable, trace: r.trace || null,
+      answerable: r.answerable, trace: r.trace || null,
     });
   } catch (e) {
-    chat.turns.push({ role: 'assistant', content: e.message, refused: true });
+    chat.messages.push({ role: 'assistant', content: e.message, answerable: false });
   } finally {
-    save(); drawLog();
+    drawLog();
     $('send').disabled = false;
     $('q').focus();
   }
@@ -652,7 +711,7 @@ $('run').onclick = async () => {
     drawEval(await api('/eval/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ doc_id: docId }),
+      body: JSON.stringify({ doc_id: docId, label: $('label').value.trim() || null }),
     }));
     poll();
   } catch (e) {
@@ -681,6 +740,7 @@ function drawEval(s) {
   if (s.error) $('errs').textContent = s.error;
   if (s.running) return poll();
   if (timer) halt();
+  drawHistory();
   if (!s.summary) return;
 
   const out = $('out');
@@ -828,6 +888,66 @@ function flagCell(v) {
   return td;
 }
 
+/* ---------- run history ----------
+   Tuning a RAG system is comparing this run with the one before it, so every
+   run is kept together with the settings that produced it. */
+
+async function drawHistory() {
+  const box = $('history');
+  let runs = [];
+  try { runs = await api('/eval/runs'); } catch { return; }
+  box.innerHTML = '';
+  if (!runs.length) return;
+
+  const card = el('div', 'card');
+  card.append(el('h3', null, `Previous runs (${runs.length})`));
+  card.append(el('p', 'sub', 'Click one to read it back. Each keeps the settings it ran under.'));
+
+  for (const r of runs) {
+    const row = el('div', 'runrow');
+    row.append(el('span', 'when', (r.started_at || '').replace('T', ' ').replace('+00:00', '')));
+    row.append(el('span', 'what', r.label || (r.status === 'done' ? 'unlabelled run' : r.status)));
+
+    const mini = el('div', 'mini');
+    if (r.status === 'done') {
+      for (const t of (r.headline || []).slice(0, 3)) {
+        const cell = el('span');
+        cell.append(el('span', null, t.label.slice(0, 4).toLowerCase() + ' '),
+                    el('b', null, pct(t.value)));
+        cell.title = t.metric;
+        mini.append(cell);
+      }
+      const k = r.knobs || {};
+      if (k.retriever_top_k) mini.append(el('span', null, `k=${k.retriever_top_k}`));
+      if (k.chunk_tokens) mini.append(el('span', null, `chunk=${k.chunk_tokens}`));
+    } else {
+      mini.append(el('span', null, r.error ? 'failed' : r.status));
+    }
+    row.append(mini);
+
+    const kill = el('button', 'ghost kill', '×');
+    kill.title = 'Delete this run';
+    kill.onclick = async (ev) => {
+      ev.stopPropagation();
+      try { await api('/eval/runs/' + r.run_id, { method: 'DELETE' }); await drawHistory(); }
+      catch (e) { $('errs').textContent = e.message; }
+    };
+    row.append(kill);
+
+    row.onclick = async () => {
+      try {
+        const full = await api('/eval/runs/' + r.run_id);
+        document.querySelectorAll('.runrow').forEach(n => n.classList.remove('on'));
+        row.classList.add('on');
+        $('says').textContent = `Showing run ${r.run_id}${r.label ? ' - ' + r.label : ''}.`;
+        drawEval(full);
+      } catch (e) { $('errs').textContent = e.message; }
+    };
+    card.append(row);
+  }
+  box.append(card);
+}
+
 /* ---------- tabs and boot ---------- */
 
 for (const tab of document.querySelectorAll('.tab')) {
@@ -838,10 +958,10 @@ for (const tab of document.querySelectorAll('.tab')) {
   };
 }
 
-chats = restore();
-if (chats.length) { activeId = chats[0].id; drawChats(); drawLog(); } else { newChat(); }
+loadChats();
 drawStatus();
 drawDocs();
+drawHistory();
 /* A run started before a reload is still going on the server, so pick it back up. */
 api('/eval/status').then(s => { if (s.summary || s.running) drawEval(s); }).catch(() => {});
 </script>

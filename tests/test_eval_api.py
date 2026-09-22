@@ -39,7 +39,8 @@ def test_the_ui_only_uses_endpoints_that_exist(settings, store):
         page = client.get("/").text
         paths = set(client.get("/openapi.json").json()["paths"])
 
-    for path in ["/health", "/documents", "/ingest", "/chat", "/eval/run", "/eval/status"]:
+    for path in ["/health", "/documents", "/ingest", "/chat", "/conversations",
+                 "/eval/run", "/eval/runs", "/eval/status"]:
         assert "'{}'".format(path) in page, "{} is not called by the UI".format(path)
         assert path in paths, "{} is called by the UI but not served".format(path)
 
@@ -97,11 +98,32 @@ def test_a_second_run_is_refused_while_one_is_in_flight(settings, store):
     app = create_app(settings, store, providers)
 
     with TestClient(app) as client:
-        app.state.eval_run.status = EvalStatus(running=True, done=2, total=18)
+        with app.state.db.write() as connection:
+            connection.execute(
+                "INSERT INTO eval_runs (status, total, done, started_at) "
+                "VALUES ('running', 18, 2, '2026-01-01T00:00:00+00:00')"
+            )
         response = client.post("/eval/run", json={})
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "evaluation_running"
+
+
+def test_a_run_left_running_by_a_crash_is_not_treated_as_live(settings, store):
+    providers = FakeProviders(FakeEmbedder())
+    app = create_app(settings, store, providers)
+    store.db.setup()
+    with store.db.write() as connection:
+        connection.execute(
+            "INSERT INTO eval_runs (status, total, done, started_at) "
+            "VALUES ('running', 18, 5, '2026-01-01T00:00:00+00:00')"
+        )
+
+    with TestClient(app) as client:  # startup clears it
+        status = client.get("/eval/status").json()
+
+    assert status["running"] is False
+    assert "interrupted" in status["error"]
 
 
 def test_evaluating_an_unknown_document_is_refused(settings, store, simple_pdf):
