@@ -1,0 +1,5 @@
+{"id": "q01", "type": "factual", "question": "What is the maximum amount allowed?", "history": [], "answerable": true, "gold_pages": [1], "expected_answer_contains": ["50"]}
+{"id": "q02", "type": "multi_passage", "question": "How does processing differ for international applicants compared with domestic ones?", "history": [], "answerable": true, "gold_pages": [1, 2], "expected_answer_contains": ["sixty", "thirty"]}
+{"id": "q03", "type": "follow_up", "question": "What about international applicants?", "history": [{"role": "user", "content": "What are the eligibility requirements?"}, {"role": "assistant", "content": "Applicants must be at least eighteen and hold a valid national identity document."}], "answerable": true, "gold_pages": [2], "expected_answer_contains": ["translation"]}
+{"id": "q04", "type": "unanswerable", "question": "What is the company's share price?", "history": [], "answerable": false, "gold_pages": [], "expected_answer_contains": []}
+{"id": "q05", "type": "similar_sections", "question": "Who is responsible for reviewing applications?", "history": [], "answerable": true, "gold_pages": [2], "expected_answer_contains": ["admissions office"]}

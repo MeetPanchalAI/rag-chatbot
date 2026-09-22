@@ -1,0 +1,149 @@
+# RAG Document Chatbot
+
+Ask questions about any PDF and get answers grounded in it, with page and
+section citations. When the document does not answer the question, the system
+says so instead of guessing.
+
+## Setup
+
+Python 3.11 or newer.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+cp .env.example .env             # then put your API key in it
+```
+
+## Run
+
+```bash
+# 1. Index a PDF (use this for large files rather than the endpoint)
+python -m app.ingest_cli path/to/document.pdf
+
+# 2. Start the API
+uvicorn app.main:app --reload
+```
+
+Open http://127.0.0.1:8000/docs to try it in the browser.
+
+## Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Service status and how much is indexed |
+| `GET /documents` | What has been ingested, with document ids |
+| `POST /ingest` | Upload a PDF (multipart). Small files only; see the note below |
+| `POST /chat` | Ask a question |
+
+### Asking a question
+
+```bash
+curl -X POST localhost:8000/chat -H "content-type: application/json" -d '{
+  "question": "What is the maximum amount allowed?"
+}'
+```
+
+```json
+{
+  "answer": "The maximum amount allowed is 50 units.",
+  "answerable": true,
+  "citations": [
+    {
+      "document": "Handbook",
+      "page_start": 47,
+      "page_end": 47,
+      "section": "Eligibility Requirements",
+      "display": "Page 47 - \"Eligibility Requirements\""
+    }
+  ]
+}
+```
+
+Optional fields: `doc_id` to search one document instead of all of them,
+`history` for follow-up questions, and `debug: true` to see what was retrieved.
+
+### Follow-up questions
+
+Send the previous turns in `history`. A follow-up like *"What about
+international applicants?"* is rewritten into a standalone query before the
+search, because the question alone retrieves nothing useful.
+
+```json
+{
+  "question": "What about international applicants?",
+  "history": [
+    {"role": "user", "content": "What are the eligibility requirements?"},
+    {"role": "assistant", "content": "Applicants must be at least eighteen..."}
+  ]
+}
+```
+
+### Seeing what was retrieved
+
+`"debug": true` adds a `trace` to the response: the rewritten query, every
+retrieved chunk with its score, which ones became evidence, and which guards
+fired. The same information is written to the log for every request.
+
+## Tests
+
+```bash
+pytest
+```
+
+Every test runs offline. The embedding model and the LLM are replaced by
+fakes, and test PDFs are generated in memory, so there is no API key needed and
+no network call.
+
+## Evaluation
+
+`eval/questions.jsonl` holds the question set, one JSON object per line:
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `type` | Identifier and category |
+| `question` | What to ask |
+| `history` | Previous turns, for follow-up questions |
+| `answerable` | Whether the document should be able to answer it |
+| `gold_pages` | Pages that hold the answer |
+| `expected_answer_contains` | Words the answer should contain |
+
+The file in the repository is a template against the sample document. Replace
+it with questions written against your own PDF.
+
+```bash
+python -m eval.run_eval --questions eval/questions.jsonl
+```
+
+This writes `eval/results.md` (a report) and `eval/results.jsonl` (raw scores).
+It needs an indexed document and an API key, and costs one or two model calls
+per question. See DESIGN.md for what the metrics mean.
+
+## Configuration
+
+Everything is set through the environment; see `.env.example`. No secrets in
+code. The settings you are most likely to change:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LLM_MODEL` | `gpt-5.6-luna` | Model that writes the answer |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Model that embeds chunks and queries |
+| `LLM_TEMPERATURE` | `1.0` | gpt-5.6-luna is a reasoning model and only accepts its default |
+| `LLM_REASONING_EFFORT` | `low` | Leave blank to omit the parameter entirely |
+| `CHUNK_TOKENS` | `500` | Target chunk size |
+| `RETRIEVER_TOP_K` | `6` | Chunks retrieved per question |
+| `MAX_CONTEXT_TOKENS` | `4000` | Ceiling on evidence sent to the model |
+
+The API works with any OpenAI-compatible endpoint via `OPENAI_BASE_URL`.
+
+## Notes and limits
+
+- **Large PDFs**: use `python -m app.ingest_cli`. A long document is thousands
+  of chunks and several minutes of embedding calls, which outlasts a normal
+  HTTP timeout. The upload endpoint is capped by `MAX_UPLOAD_MB`.
+- **Scanned PDFs** are rejected with a clear error. There is no OCR.
+- **Page numbers** are PDF page positions, not the numbers printed on the page.
+  In a document with front matter the two differ.
+- The index lives in `DATA_DIR` as plain files and is not committed.
+
+Full design rationale, trade-offs and limitations: [DESIGN.md](DESIGN.md).
