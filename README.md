@@ -122,7 +122,8 @@ brief, in the five categories it asks for:
 Every gold page was checked against the indexed text, so a retrieval miss is a
 real miss and not a bad label.
 
-To run it, index the same PDF first, then:
+The PDF itself is not committed. To reproduce the run, index your own copy of
+the assignment brief first:
 
 ```bash
 python -m app.ingest_cli AI_Engineering_Task_1_RAG.pdf
