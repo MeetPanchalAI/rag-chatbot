@@ -18,6 +18,7 @@ unanswerable questions: several are answerable from the *other* document, so
 scoping each question to its own is what makes them a real abstention test.
 """
 
+import hashlib
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -32,6 +33,7 @@ from app.schemas import ChatRequest, ChatResponse
 from app.vector_store import VectorStore
 
 QUESTIONS_FILE = Path(__file__).resolve().parent.parent / "eval" / "questions.jsonl"
+CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus"
 
 CATEGORIES = ("factual", "multi_passage", "follow_up", "unanswerable", "similar_sections")
 
@@ -43,17 +45,50 @@ def load_questions(path: Path | None = None) -> list[dict]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
-def resolve_documents(questions: list[dict], store: VectorStore) -> dict[str, str]:
-    """Map the `doc` name in the set to an indexed document id, by filename stem."""
-    by_stem = {d.filename.rsplit(".", 1)[0].lower(): d.doc_id for d in store.list_documents()}
-    wanted = {q["doc"] for q in questions if q.get("doc")}
-    missing = sorted(name for name in wanted if name.lower() not in by_stem)
+def _stem(name: str) -> str:
+    return name.rsplit(".", 1)[0].strip().lower()
+
+
+def resolve_documents(
+    questions: list[dict], store: VectorStore, corpus_dir: Path | None = None
+) -> dict[str, str]:
+    """Map the `doc` name in the set to an indexed document id.
+
+    Matched on content first. A document id is a hash of the file bytes, so the
+    corpus file in the repository identifies its indexed copy whatever the
+    uploader happened to call it. Filename and title are only fallbacks, because
+    those are names a person chose and can change.
+    """
+    corpus_dir = corpus_dir or CORPUS_DIR
+    documents = store.list_documents()
+    by_filename = {_stem(d.filename): d.doc_id for d in documents}
+    by_title = {_stem(d.title): d.doc_id for d in documents}
+    indexed = set(store.documents)
+
+    resolved: dict[str, str] = {}
+    for name in {q["doc"] for q in questions if q.get("doc")}:
+        source = corpus_dir / (name + ".pdf")
+        if source.is_file():
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            if digest in indexed:
+                resolved[name] = digest
+                continue
+        for table in (by_filename, by_title):
+            if _stem(name) in table:
+                resolved[name] = table[_stem(name)]
+                break
+
+    missing = sorted({q["doc"] for q in questions if q.get("doc")} - set(resolved))
     if missing:
         raise IngestError(
-            "The evaluation set names documents that are not indexed: {}. "
-            "Ingest them first.".format(", ".join(missing))
+            "The evaluation set needs {}, which could not be matched to anything "
+            "indexed. Indexed now: {}. Ingest the corpus with: "
+            "python -m app.ingest_cli corpus/free221.pdf corpus/Lecture10.pdf".format(
+                ", ".join(missing),
+                ", ".join(sorted(d.filename for d in documents)) or "nothing",
+            )
         )
-    return {name: by_stem[name.lower()] for name in wanted}
+    return resolved
 
 
 def covered_pages(response: ChatResponse) -> set[int]:

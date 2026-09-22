@@ -98,3 +98,70 @@ def test_every_question_is_one_the_api_would_accept(rows):
     # whole evaluation run.
     for row in rows:
         ChatRequest(question=row["question"], history=row["history"])
+
+
+# --- matching the set to indexed documents ---
+
+
+def indexed(store, embedder, doc_id: str, filename: str, title: str) -> None:
+    from app.schemas import Chunk, DocumentInfo
+
+    chunk = Chunk(chunk_id=doc_id + ":0", doc_id=doc_id, doc_title=title,
+                  text="some indexed text", page_start=1, page_end=1)
+    store.add(
+        DocumentInfo(doc_id=doc_id, filename=filename, title=title, pages=1, chunks=1,
+                     ingested_at="2026-01-01T00:00:00+00:00"),
+        [chunk], embedder.embed([chunk.text]),
+    )
+
+
+def question(doc: str) -> dict:
+    return {"id": "q", "doc": doc, "type": "factual", "question": "?",
+            "answerable": True, "gold_pages": [1]}
+
+
+def test_a_document_is_matched_by_content_even_when_renamed(store, embedder, tmp_path):
+    # The uploader can call the file anything; the bytes are what identify it.
+    import hashlib
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "free221.pdf").write_bytes(b"%PDF-1.4 pretend")
+    digest = hashlib.sha256(b"%PDF-1.4 pretend").hexdigest()
+    indexed(store, embedder, digest, "calculus.pdf", "calculus")
+
+    from app.evaluation import resolve_documents
+
+    assert resolve_documents([question("free221")], store, corpus) == {"free221": digest}
+
+
+def test_a_document_is_matched_by_filename_when_the_corpus_file_is_absent(
+    store, embedder, tmp_path
+):
+    from app.evaluation import resolve_documents
+
+    indexed(store, embedder, "abc123", "free221.pdf", "Some Title")
+
+    assert resolve_documents([question("free221")], store, tmp_path) == {"free221": "abc123"}
+
+
+def test_a_document_is_matched_by_title_as_a_last_resort(store, embedder, tmp_path):
+    from app.evaluation import resolve_documents
+
+    indexed(store, embedder, "abc123", "upload-4.pdf", "Lecture10")
+
+    assert resolve_documents([question("Lecture10")], store, tmp_path) == {"Lecture10": "abc123"}
+
+
+def test_an_unmatched_document_says_what_is_indexed(store, embedder, tmp_path):
+    """The old message named only what was missing, which left you guessing."""
+    from app.errors import IngestError
+    from app.evaluation import resolve_documents
+
+    indexed(store, embedder, "abc123", "something-else.pdf", "Something Else")
+
+    with pytest.raises(IngestError) as caught:
+        resolve_documents([question("free221")], store, tmp_path)
+
+    assert "free221" in str(caught.value)
+    assert "something-else.pdf" in str(caught.value), "it must name what is indexed"
