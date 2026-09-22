@@ -16,9 +16,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.config import Settings, get_settings
 from app.errors import AppError, EvaluationRunning, FileTooLarge, UnsupportedFile
 from app.evaluation import (
+    headline,
     load_questions,
     run_evaluation,
     score_distribution,
+    score_ranges,
     summarise,
     write_report,
 )
@@ -228,7 +230,9 @@ def create_app(
                 with run.lock:
                     run.status.rows = rows
                     run.status.summary = summarise(rows)
+                    run.status.headline = headline(rows)
                     run.status.distribution = score_distribution(rows)
+                    run.status.ranges = score_ranges(rows)
             except Exception as exc:  # the UI shows this; the run must not vanish
                 log.exception("Evaluation failed")
                 with run.lock:

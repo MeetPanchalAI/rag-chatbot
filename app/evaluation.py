@@ -137,6 +137,76 @@ def summarise(rows: list[dict]) -> dict:
     }
 
 
+def _share(values: list[bool]) -> tuple[float | None, int, int]:
+    if not values:
+        return None, 0, 0
+    return sum(values) / len(values), sum(values), len(values)
+
+
+def _pct(value: float | None) -> str:
+    return "n/a" if value is None else "{:.0%}".format(value)
+
+
+def headline(rows: list[dict]) -> list[dict]:
+    """The four things the brief asks you to measure, as numbers.
+
+    `summarise` formats for the written report; this is for the UI, which needs
+    the value to draw a meter. All four are phrased so that higher is better, so
+    the meters mean the same thing in every tile. The hallucination count is the
+    detail under Refusal rather than a tile of its own: a filling bar for a
+    number you want at zero reads backwards.
+    """
+    answerable = [r for r in rows if r["should_be_answerable"]]
+    unanswerable = [r for r in rows if not r["should_be_answerable"]]
+
+    recall, recall_hit, recall_of = _share(
+        [r["recall"] for r in answerable if r["recall"] is not None]
+    )
+    coverage, _, _ = _share([r["coverage"] for r in answerable if r["coverage"] is not None])
+    keywords, keyword_hit, keyword_of = _share(
+        [r["keywords_found"] for r in answerable if r["keywords_found"] is not None]
+    )
+    precisions = [
+        r["citation_precision"] for r in answerable if r["citation_precision"] is not None
+    ]
+    citation = sum(precisions) / len(precisions) if precisions else None
+    refusal, refused, refusal_of = _share([not r["answerable"] for r in unanswerable])
+    hallucinated = sum(1 for r in unanswerable if r["answerable"])
+
+    return [
+        {
+            "label": "Retrieval",
+            "metric": "a page holding the answer was retrieved",
+            "value": recall,
+            "detail": "{}/{} questions - every gold page found for {}".format(
+                recall_hit, recall_of, _pct(coverage)
+            ),
+        },
+        {
+            "label": "Answer",
+            "metric": "the expected content is in the answer",
+            "value": keywords,
+            "detail": "{}/{} questions - a keyword screen, not a judgement".format(
+                keyword_hit, keyword_of
+            ),
+        },
+        {
+            "label": "Citation",
+            "metric": "the cited page holds the answer",
+            "value": citation,
+            "detail": "mean over answered questions",
+        },
+        {
+            "label": "Refusal",
+            "metric": "said so when the document could not answer",
+            "value": refusal,
+            "detail": "{}/{} questions - {} answered that should not have been".format(
+                refused, refusal_of, hallucinated
+            ),
+        },
+    ]
+
+
 def score_distribution(rows: list[dict]) -> list[str]:
     """Top retrieval score, split by whether the document can answer at all.
 
@@ -163,6 +233,28 @@ def score_distribution(rows: list[dict]) -> list[str]:
                 )
             )
     return lines
+
+
+def score_ranges(rows: list[dict]) -> list[dict]:
+    """The same distributions as numbers, for the UI to plot."""
+    out: list[dict] = []
+    for label, wanted in (("answerable", True), ("unanswerable", False)):
+        scores = sorted(
+            r["top_score"]
+            for r in rows
+            if r["should_be_answerable"] is wanted and r["top_score"] is not None
+        )
+        if scores:
+            out.append(
+                {
+                    "group": label,
+                    "min": min(scores),
+                    "median": scores[len(scores) // 2],
+                    "max": max(scores),
+                    "count": len(scores),
+                }
+            )
+    return out
 
 
 def failures(rows: list[dict]) -> list[dict]:
