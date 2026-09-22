@@ -3,21 +3,13 @@
 import logging
 from collections import defaultdict
 
+from app import prompts
 from app.providers import Embedder, LLM
 from app.schemas import Chunk, Message, RetrievedChunk
 from app.text_utils import estimate_tokens
 from app.vector_store import VectorStore
 
 log = logging.getLogger(__name__)
-
-REWRITE_SYSTEM = (
-    "You rewrite the user's latest question into a standalone search query.\n"
-    "Replace pronouns and implicit references with what they refer to in the "
-    "conversation.\n"
-    "If the question already stands on its own, repeat it unchanged.\n"
-    "Reply with the query only: no preamble, no quotes, no explanation."
-)
-
 
 def page_label(chunk: Chunk) -> str:
     if chunk.page_start == chunk.page_end:
@@ -42,7 +34,7 @@ def rewrite_query(
     transcript = "\n".join("{}: {}".format(m.role, m.content) for m in recent)
     prompt = "Conversation:\n{}\n\nLatest question: {}".format(transcript, question)
 
-    rewritten = llm.complete(REWRITE_SYSTEM, prompt).strip().strip('"')
+    rewritten = llm.complete(prompts.load("rewrite_query"), prompt).strip().strip('"')
 
     # A rewrite that is empty or rambling is worse than the original question.
     if not rewritten or len(rewritten) > max(400, len(question) * 6):

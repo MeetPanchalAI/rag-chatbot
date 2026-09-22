@@ -16,30 +16,10 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app import prompts
 from app.providers import LLM
 
 log = logging.getLogger(__name__)
-
-SYSTEM = (
-    "You grade one answer produced by a document question-answering system.\n"
-    "You are given the question, the reference answer, the evidence the system "
-    "retrieved, and what the system replied.\n\n"
-    "Score each of these 0, 1 or 2. 0 is poor, 1 is partial, 2 is good.\n"
-    "- correctness: does the reply agree with the reference answer?\n"
-    "- groundedness: is every claim in the reply supported by the evidence shown? "
-    "A reply that is right but not supported by the evidence scores low here.\n"
-    "- citation_support: do the cited pages actually contain what the reply "
-    "claims? Score 0 if the reply cites nothing while making claims.\n"
-    "- completeness: does the reply cover what the reference answer covers?\n\n"
-    "When the reference says the document cannot answer the question: a reply "
-    "that says so scores 2 for correctness, and a reply that answers anyway "
-    "scores 0 for correctness and 0 for groundedness.\n"
-    "The evidence is extracted from a PDF and may contain broken symbols. Judge "
-    "the meaning, not the typography.\n"
-    'Reply with JSON only: {"correctness": int, "groundedness": int, '
-    '"citation_support": int, "completeness": int, "reason": string}. '
-    "Keep reason to one sentence."
-)
 
 SCORES = ("correctness", "groundedness", "citation_support", "completeness")
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -95,7 +75,7 @@ def judge_answer(
     """Score one answer. A judge that misbehaves yields no score, never a guess."""
     prompt = _prompt(question, history, expected, answer, evidence, citations, points or [])
     try:
-        raw = llm.complete(SYSTEM, prompt, json_mode=True)
+        raw = llm.complete(prompts.load("judge"), prompt, json_mode=True)
     except Exception as exc:
         log.warning("Judge call failed: %s", exc)
         return JudgeResult(scores=dict(EMPTY.scores), reason=str(exc)[:200], failed=True)

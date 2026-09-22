@@ -18,6 +18,7 @@ question + history ─► rewrite ─► retrieve ◄─────────
 | `generation.py` | The prompt, and the guards on what comes back |
 | `rerank.py` | Reorders candidates before answering |
 | `judge.py` | Scores answers during evaluation |
+| `prompts.py` | Reads the prompt files |
 | `activity.py` | The record behind the dashboard |
 | `pipeline.py` | Wires the flow; used by the API and the evaluation alike |
 | `providers.py` | The only file that talks to OpenAI |
@@ -136,6 +137,30 @@ to the user.
 `tests/test_invariants.py` checks the two properties everything rests on: the
 model only ever sees retrieved chunks, and every citation resolves to a chunk
 that was actually retrieved.
+
+## Prompts
+
+The five instructions this system sends — answering, the retry after unparseable
+output, follow-up rewriting, reranking, and judging — live in `prompts/`, one
+plain text file each.
+
+They are content, not code. They get rewritten far more often than the functions
+around them, and a diff on a text file says what changed without the noise of
+Python quoting. Files are read when used rather than at import, so editing one
+takes effect on the next question without a restart.
+
+Substitution is a literal `{name}` replace and never `str.format`, because
+several of these prompts contain JSON examples with braces in them.
+
+What stays in code is the user message: the evidence, the conversation and the
+candidate passages, assembled under fixed labels. That is runtime data, not
+instruction.
+
+Three contracts survive any edit, and are tested: the answer prompt must ask for
+*evidence numbers* rather than page numbers, which is what stops an invented page
+reaching the user; it must keep the `answerable` flag, which is how refusal
+works; and the four prompts sent in JSON mode must contain the word "json",
+which the API requires.
 
 ## When the document cannot answer
 

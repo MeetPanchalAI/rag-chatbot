@@ -13,26 +13,13 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
+from app import prompts
 from app.providers import LLM
 from app.schemas import AnswerJSON, Message
 
 log = logging.getLogger(__name__)
 
 REFUSAL = "The document does not contain enough information to answer that."
-
-ANSWER_SYSTEM = (
-    "You answer questions about a document using only the numbered evidence "
-    "given to you.\n"
-    "Rules:\n"
-    "- Use only the evidence. Never use outside knowledge.\n"
-    "- Use the conversation only to understand the question, never as evidence.\n"
-    "- If the evidence does not answer the question, set answerable to false and "
-    "say what is missing.\n"
-    "- Cite the evidence numbers you actually used.\n"
-    "- Answer in plain prose. Do not mention evidence numbers in the answer text.\n"
-    'Reply with JSON only, in this shape: {"answer": string, "answerable": '
-    "boolean, \"citations\": [int]}"
-)
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
@@ -82,19 +69,16 @@ def generate_answer(
     prompt = _build_prompt(question, history, evidence, max_turns)
     guards: list[str] = []
 
-    raw = llm.complete(ANSWER_SYSTEM, prompt, json_mode=True)
+    raw = llm.complete(prompts.load("answer"), prompt, json_mode=True)
     try:
         parsed = _parse(raw)
     except (ValidationError, json.JSONDecodeError, ValueError) as first_error:
         guards.append("json_retry")
         log.warning("Model returned unparseable output; retrying once: %s", first_error)
-        retry_prompt = (
-            prompt
-            + "\n\nYour previous reply could not be parsed ("
-            + str(first_error)[:200]
-            + "). Reply with JSON only, with keys answer, answerable and citations."
+        retry_prompt = prompt + "\n\n" + prompts.load(
+            "answer_retry", error=str(first_error)[:200]
         )
-        raw = llm.complete(ANSWER_SYSTEM, retry_prompt, json_mode=True)
+        raw = llm.complete(prompts.load("answer"), retry_prompt, json_mode=True)
         try:
             parsed = _parse(raw)
         except (ValidationError, json.JSONDecodeError, ValueError) as second_error:

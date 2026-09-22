@@ -91,13 +91,25 @@ Optional fields: `doc_id` to search one document, `debug: true` to see what was
 retrieved, and for follow-ups either `history` (nothing is stored) or
 `conversation_id` (the server keeps the history and records both turns).
 
+## Prompts
+
+Every instruction sent to a model lives in [`prompts/`](prompts/), one file
+each: answering, the retry after unparseable output, follow-up rewriting,
+reranking, and the evaluation judge. Edit a file and the next question uses it —
+no restart.
+
+The user message is still assembled in code, because it is runtime data — the
+evidence, the conversation, the candidate passages — under fixed labels.
+[`prompts/README.md`](prompts/README.md) lists the few rules an edit must not
+break, and `tests/test_prompts.py` checks them.
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-155 tests, all offline. The embedding model and the LLM are replaced by fakes and
+174 tests, all offline. The embedding model and the LLM are replaced by fakes and
 test PDFs are generated in memory, so no key and no network are needed.
 
 ## Evaluation

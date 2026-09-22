@@ -15,6 +15,7 @@ import re
 
 from pydantic import BaseModel, ValidationError
 
+from app import prompts
 from app.providers import LLM
 from app.schemas import RetrievedChunk
 
@@ -22,13 +23,6 @@ log = logging.getLogger(__name__)
 
 SNIPPET_CHARS = 400
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
-
-SYSTEM = (
-    "You order passages by how much they help answer a question.\n"
-    "Return the passage numbers best first. Leave out passages that do not "
-    "help. Never invent a number that was not given to you.\n"
-    'Reply with JSON only: {"order": [int, ...]}'
-)
 
 
 class Order(BaseModel):
@@ -54,7 +48,7 @@ def rerank(
     prompt = "Question:\n{}\n\nPassages:\n{}".format(query, listing)
 
     try:
-        raw = llm.complete(SYSTEM, prompt, json_mode=True)
+        raw = llm.complete(prompts.load("rerank"), prompt, json_mode=True)
         parsed = Order.model_validate_json(_FENCE.sub("", raw.strip()).strip())
     except Exception as exc:
         log.warning("Rerank failed, keeping the original order: %s", exc)
