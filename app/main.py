@@ -106,7 +106,7 @@ def create_app(
         # a boot error with a clear message instead of a 502 later.
         if uses_real_providers and not settings.openai_api_key:
             raise RuntimeError(
-                "OPENAI_API_KEY is not set. Copy .env.example to .env and add your key."
+                "OPENAI_API_KEY is not set. Add it to the .env file in the project root."
             )
         app.state.store.load()
         yield
