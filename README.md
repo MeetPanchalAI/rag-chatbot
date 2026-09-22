@@ -108,16 +108,33 @@ no network call.
 | `gold_pages` | Pages that hold the answer |
 | `expected_answer_contains` | Words the answer should contain |
 
-The file in the repository is a template against the sample document. Replace
-it with questions written against your own PDF.
+The set in the repository is 18 questions written against this assignment
+brief, in the five categories it asks for:
+
+| Category | Count | What it tests |
+| --- | --- | --- |
+| `factual` | 4 | One passage, one page |
+| `multi_passage` | 4 | Answers that span two pages |
+| `follow_up` | 3 | Questions meaningless without the history |
+| `unanswerable` | 3 | Does it admit it does not know? |
+| `similar_sections` | 4 | Several sections compete for the same query |
+
+Every gold page was checked against the indexed text, so a retrieval miss is a
+real miss and not a bad label.
+
+To run it, index the same PDF first, then:
 
 ```bash
-python -m eval.run_eval --questions eval/questions.jsonl
+python -m app.ingest_cli AI_Engineering_Task_1_RAG.pdf
+python -m eval.run_eval
 ```
 
 This writes `eval/results.md` (a report) and `eval/results.jsonl` (raw scores).
 It needs an indexed document and an API key, and costs one or two model calls
 per question. See DESIGN.md for what the metrics mean.
+
+To evaluate a different PDF, replace `questions.jsonl` with questions written
+against it. Nothing in the code is tied to this document.
 
 ## Configuration
 

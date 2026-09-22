@@ -26,7 +26,14 @@ class LLM(Protocol):
 
 
 def _retry_once(fn, what: str):
-    """Call fn, retrying once on a provider failure. Then give up."""
+    """Call fn, retrying once if the failure is worth retrying.
+
+    Timeouts, dropped connections, rate limits and server errors are transient
+    and a second attempt may succeed. A rejected request is not: an unsupported
+    parameter or a malformed body fails identically the second time, so we
+    surface it immediately with the provider's own explanation rather than
+    doubling the latency and the cost.
+    """
     import openai
 
     last: Exception | None = None
@@ -36,9 +43,18 @@ def _retry_once(fn, what: str):
         except openai.APITimeoutError as exc:
             last = ProviderTimeout(f"{what} timed out")
             log.warning("%s timed out (attempt %d): %s", what, attempt, exc)
-        except openai.OpenAIError as exc:
+        except (openai.APIConnectionError, openai.RateLimitError) as exc:
             last = ProviderError(f"{what} failed: {exc}")
             log.warning("%s failed (attempt %d): %s", what, attempt, exc)
+        except openai.APIStatusError as exc:
+            last = ProviderError(f"{what} failed: {exc}")
+            log.warning("%s failed with %s: %s", what, exc.status_code, exc)
+            if exc.status_code < 500:
+                break
+        except openai.OpenAIError as exc:
+            last = ProviderError(f"{what} failed: {exc}")
+            log.warning("%s failed: %s", what, exc)
+            break
     raise last  # type: ignore[misc]
 
 
