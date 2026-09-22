@@ -6,7 +6,16 @@ import pytest
 from pypdf import PdfWriter
 
 from app.errors import IngestError
-from app.ingestion import build_chunks, detect_headings, embedding_text, ingest_pdf, parse_pdf
+from app.ingestion import (
+    Line,
+    _assign_columns,
+    _split_into_sections,
+    build_chunks,
+    detect_headings,
+    embedding_text,
+    ingest_pdf,
+    parse_pdf,
+)
 from app.text_utils import estimate_tokens
 from tests.conftest import make_pdf
 
@@ -120,3 +129,80 @@ def test_embedded_text_is_prefixed_with_document_and_section(simple_pdf, setting
     assert text.startswith(chunk.doc_title)
     assert chunk.section in text
     assert chunk.text in text
+
+
+# --- regressions found by running the parser over a real-world PDF ---
+
+
+def _words(count: int, x0: float, x1: float) -> list[dict]:
+    return [{"x0": x0, "x1": x1, "top": i * 12.0} for i in range(count)]
+
+
+def test_a_genuine_two_column_page_is_split():
+    words = _words(12, 60, 260) + _words(12, 340, 540)
+
+    assert set(_assign_columns(words, 612)) == {0, 1}
+
+
+def test_text_crossing_the_middle_vetoes_the_two_column_reading():
+    # A centred title or a full-width paragraph spans the gutter. Splitting the
+    # page in half would cut it in two and scramble the reading order.
+    words = _words(12, 60, 260) + _words(12, 340, 540) + _words(3, 120, 500)
+
+    assert set(_assign_columns(words, 612)) == {0}
+
+
+def _line(text: str, size: float = 11, bold: bool = False) -> Line:
+    return Line(page=1, block=0, text=text, size=size, bold=bold)
+
+
+def _body(count: int) -> list[Line]:
+    """Ordinary body lines, so the median font size reflects a real page."""
+    return [_line("Body sentence number {} on this page.".format(i)) for i in range(count)]
+
+
+def test_the_tail_of_a_wrapped_sentence_is_not_a_heading():
+    lines = (
+        [_line("Introduction", 18)]
+        + _body(6)
+        # A sentence that wrapped onto a second line, set in the same large type
+        # as the title above it. Only the lowercase start gives it away.
+        + [_line("explanation of trade-offs, not a large product", 18)]
+        + [_line("Methods", 18)]
+        + _body(6)
+    )
+
+    headings = detect_headings(lines, toc_titles=set())
+
+    assert set(headings.values()) == {"Introduction", "Methods"}
+
+
+def test_bullet_points_are_not_headings():
+    lines = (
+        [_line("Engineering requirements", 18)]
+        + [_line("- Validation: validate requests and handle invalid input", 14)]
+        + [_line("- Testing: include automated tests for important components", 14)]
+        + _body(6)
+        + [_line("Evaluation", 18)]
+        + _body(6)
+    )
+
+    headings = detect_headings(lines, toc_titles=set())
+
+    assert set(headings.values()) == {"Engineering requirements", "Evaluation"}
+
+
+def test_a_stray_one_line_section_is_folded_into_the_section_above_it():
+    # Styled pages produce "headings" with nothing under them. Emitting those as
+    # their own chunks fills the index with text too short to retrieve on.
+    lines = (
+        [_line("Introduction", 18)]
+        + [_line("Body sentence number {} of the introduction.".format(i)) for i in range(10)]
+        + [_line("Stray Line", 18)]
+    )
+
+    sections = _split_into_sections(lines, {0: "Introduction", 11: "Stray Line"})
+
+    assert len(sections) == 1
+    assert sections[0][0] == "Introduction"
+    assert "Stray Line" in " ".join(line.text for line in sections[0][1]), "text was lost"

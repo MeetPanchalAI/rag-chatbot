@@ -49,7 +49,13 @@ Two further details matter more than they look:
 
 - **Column-aware extraction.** Reading a two-column page top to bottom
   interleaves the columns into unusable text. Words are assigned to a column
-  before being grouped into lines.
+  before being grouped into lines. A page only counts as two columns if it has
+  a genuinely empty strip down the middle: a centred title crosses that strip,
+  and splitting the page in half would cut the title in two.
+- **Fragment merging.** Heading detection is deliberately generous, so a styled
+  page can produce "sections" one line long. Those are folded back into the
+  section above, heading line included, rather than becoming chunks too short
+  to retrieve on.
 - **Enriched embedding text.** A chunk from the middle of a section often reads
   as *"this gives us the result above"*, which embeds to nothing useful. The
   document and section title are prefixed to the text we embed. The text we
@@ -109,6 +115,24 @@ Three guards enforce this:
 `test_invariants.py` checks both load-bearing properties end to end: the model
 only ever sees retrieved chunks, and every citation resolves to a chunk that
 was actually retrieved.
+
+## What running the parser over a real PDF changed
+
+The synthetic PDFs in the test suite are clean, and a real one was not. Running
+the parser over the assignment brief itself found three defects that no
+generated fixture would have shown:
+
+| Defect | Effect | Fix |
+| --- | --- | --- |
+| Column split fired on a styled title page | The centred title was cut in half and read out of order | A two-column reading now needs an empty gutter |
+| Heading rules caught body text | 38 "headings" in 129 lines, most of them wrapped sentences | Headings must start like titles, and bullets are excluded |
+| One-line sections became chunks | Chunks of 28 characters, too short to retrieve on | Fragments merge into the section above |
+
+Afterwards: 22 headings, matching the document's real section structure, and a
+smallest chunk of 77 characters instead of 28. Each fix has a regression test.
+
+The limitation this exposed and did not fix: a table row is read as one line of
+run-together text. Tables lose their structure.
 
 ## Questions the document cannot answer
 

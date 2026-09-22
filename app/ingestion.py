@@ -32,10 +32,13 @@ MAX_HEADING_CHARS = 120
 HEADING_SIZE_RATIO = 1.15
 MAX_HEADING_FRACTION = 0.30  # above this, heading detection is clearly noise
 LINE_TOLERANCE = 3.0  # points; words this close vertically are one line
+GUTTER_RATIO = 0.015  # half-width of the empty strip a two-column page needs
+MIN_SECTION_TOKENS = 15  # below this, a "section" is a stray line, not a section
 PARAGRAPH_GAP_RATIO = 1.8  # gap between lines that starts a new paragraph
 
 _NUMBERED_HEADING = re.compile(r"^\d+(\.\d+){0,3}[.)]?\s+\S")
 _PAGE_NUMBER_ONLY = re.compile(r"^[ivxlcdm\d\s.-]+$", re.IGNORECASE)
+_BULLET = re.compile(r"^[-*•·–—]\s")
 
 
 @dataclass
@@ -73,7 +76,13 @@ def _assign_columns(words: list[dict], page_width: float) -> list[int]:
     right = sum(1 for w in words if w["x0"] >= mid - tol)
     threshold = max(10, 0.25 * len(words))
 
-    if left < threshold or right < threshold:
+    # A real two-column page has an empty strip down the middle. Centred titles
+    # and full-width paragraphs cross it, and splitting those in half produces
+    # nonsense, so any meaningful crossing vetoes the two-column reading.
+    gutter = page_width * GUTTER_RATIO
+    crossing = sum(1 for w in words if w["x0"] < mid + gutter and w["x1"] > mid - gutter)
+
+    if left < threshold or right < threshold or crossing > max(2, 0.02 * len(words)):
         return [0] * len(words)
     # Words straddling the midline are full-width headers; keep them in the
     # left column so they stay ahead of the text they introduce.
@@ -262,7 +271,11 @@ def detect_headings(lines: list[Line], toc_titles: set[str]) -> dict[int, str]:
             headings[index] = text
             continue
 
-        if text.endswith((".", ",", ";", ":")):
+        if text.endswith((".", ",", ";", ":")) or _BULLET.match(text):
+            continue
+        # Headings begin like titles. This rejects the wrapped second half of a
+        # body sentence, which otherwise looks exactly like a short heading.
+        if not (text[0].isupper() or text[0].isdigit()):
             continue
         if _NUMBERED_HEADING.match(text):
             headings[index] = text
@@ -337,20 +350,42 @@ def _overlap_tail(lines: list[Line], overlap_tokens: int) -> list[Line]:
 def _split_into_sections(
     lines: list[Line], headings: dict[int, str]
 ) -> list[tuple[str | None, list[Line]]]:
-    sections: list[tuple[str | None, list[Line]]] = []
+    """Group lines under their heading, then absorb the fragments.
+
+    Heading detection is deliberately generous, so a styled page can produce
+    "sections" only a line long. Those are not sections; emitting them as their
+    own chunks would fill the index with text too short to retrieve on. Each one
+    is folded back into the section above it, heading line included so no text
+    is lost.
+    """
+    raw: list[tuple[str | None, Line | None, list[Line]]] = []
     title: str | None = None
+    heading_line: Line | None = None
     body: list[Line] = []
+
     for index, line in enumerate(lines):
         if index in headings:
-            if body:
-                sections.append((title, body))
+            if body or heading_line is not None:
+                raw.append((title, heading_line, body))
             title = headings[index]
+            heading_line = line
             body = []
         else:
             body.append(line)
-    if body:
-        sections.append((title, body))
-    return sections
+    if body or heading_line is not None:
+        raw.append((title, heading_line, body))
+
+    sections: list[list] = []
+    for section_title, line_of_heading, section_body in raw:
+        tokens = sum(estimate_tokens(item.text) for item in section_body)
+        if sections and tokens < MIN_SECTION_TOKENS:
+            if line_of_heading is not None:
+                sections[-1][1].append(line_of_heading)
+            sections[-1][1].extend(section_body)
+        else:
+            sections.append([section_title, list(section_body)])
+
+    return [(section_title, body_lines) for section_title, body_lines in sections]
 
 
 def build_chunks(parsed: ParsedPDF, doc_id: str, settings: Settings) -> list[Chunk]:
