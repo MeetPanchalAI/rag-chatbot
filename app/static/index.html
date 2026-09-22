@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Document Chatbot</title>
+<style>
+:root {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --ink: #16181d;
+  --muted: #6b7280;
+  --line: #e4e7ec;
+  --accent: #2c5fd8;
+  --accent-soft: #eef3ff;
+  --warn: #b45309;
+  --warn-soft: #fff8ed;
+  --bad: #b42318;
+  --good: #067647;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101216; --panel: #181b21; --ink: #e8eaed; --muted: #9aa1ac;
+    --line: #2a2f38; --accent: #7aa2ff; --accent-soft: #1c2534;
+    --warn: #e8a13a; --warn-soft: #2a2317; --bad: #f97066; --good: #4ade80;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  height: 100vh; display: flex; flex-direction: column;
+}
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.pill {
+  margin-left: auto; font-size: 12.5px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line);
+  padding: 4px 10px; border-radius: 999px;
+}
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--good); margin-right: 6px; }
+.dot.off { background: var(--bad); }
+
+main { flex: 1; display: flex; min-height: 0; }
+aside {
+  width: 270px; flex-shrink: 0; background: var(--panel);
+  border-right: 1px solid var(--line); padding: 18px; overflow-y: auto;
+}
+aside h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); margin: 0 0 10px; font-weight: 600;
+}
+aside section + section { margin-top: 26px; }
+
+button {
+  font: inherit; font-size: 14px; cursor: pointer; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  padding: 8px 14px; transition: background .15s, border-color .15s;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button.wide { width: 100%; }
+
+.doc {
+  display: flex; gap: 9px; align-items: flex-start; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 8px; margin-bottom: 7px; cursor: pointer;
+}
+.doc:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.doc input { margin-top: 4px; accent-color: var(--accent); }
+.doc .name { font-size: 13.5px; word-break: break-word; }
+.doc .meta { font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); font-size: 13px; font-style: italic; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); cursor: pointer; }
+.check input { accent-color: var(--accent); }
+
+.tabs { display: flex; gap: 4px; padding: 10px 20px 0; border-bottom: 1px solid var(--line); background: var(--panel); }
+.tab {
+  border: none; background: none; padding: 9px 14px; font-size: 14px;
+  color: var(--muted); border-bottom: 2px solid transparent; border-radius: 0;
+}
+.tab.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+
+.panel { flex: 1; display: none; flex-direction: column; min-height: 0; min-width: 0; }
+.panel.active { display: flex; }
+
+#messages { flex: 1; overflow-y: auto; padding: 22px; }
+.turn { max-width: 760px; margin: 0 auto 20px; }
+.role { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 5px; }
+.bubble { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 15px; white-space: pre-wrap; }
+.turn.user .bubble { background: var(--accent-soft); border-color: transparent; }
+.turn.refused .bubble { background: var(--warn-soft); border-color: var(--warn); }
+.cites { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cite { font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; color: var(--muted); }
+details.trace { margin-top: 10px; font-size: 12.5px; }
+details.trace summary { cursor: pointer; color: var(--muted); }
+details.trace table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+details.trace td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+details.trace .used { color: var(--good); }
+
+#composer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--panel); }
+#question {
+  flex: 1; font: inherit; padding: 10px 13px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: none;
+}
+#question:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+#evalPanel { overflow-y: auto; padding: 22px; }
+.eval-inner { max-width: 860px; margin: 0 auto; }
+.bar { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 14px 0 8px; }
+.bar > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+table.data { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 8px; }
+table.data th, table.data td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+table.data th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+table.data td.num { font-variant-numeric: tabular-nums; }
+.tag { font-size: 11.5px; padding: 1px 7px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); }
+.tag.hit { color: var(--good); } .tag.miss { color: var(--bad); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+.card h3 { margin: 0 0 6px; font-size: 14px; }
+.note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.error { color: var(--bad); font-size: 13.5px; margin-top: 10px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12.5px; }
+@media (max-width: 720px) { aside { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RAG Document Chatbot</h1>
+  <span class="pill" id="health"><span class="dot off"></span>connecting</span>
+</header>
+
+<main>
+  <aside>
+    <section>
+      <h2>Documents</h2>
+      <button class="wide" id="uploadBtn">Upload a PDF</button>
+      <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+      <p class="note" id="uploadNote"></p>
+      <div id="docs" style="margin-top:12px"></div>
+    </section>
+    <section>
+      <h2>Options</h2>
+      <label class="check"><input type="checkbox" id="debug"> Show what was retrieved</label>
+      <button class="wide" id="clear" style="margin-top:12px">Clear conversation</button>
+    </section>
+  </aside>
+
+  <div style="flex:1; display:flex; flex-direction:column; min-width:0">
+    <div class="tabs">
+      <button class="tab active" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="eval">Evaluation</button>
+    </div>
+
+    <div class="panel active" id="chatPanel">
+      <div id="messages"></div>
+      <form id="composer">
+        <textarea id="question" rows="1" placeholder="Ask something about the document..."></textarea>
+        <button class="primary" id="send" type="submit">Send</button>
+      </form>
+    </div>
+
+    <div class="panel" id="evalPanel">
+      <div class="eval-inner">
+        <div class="card">
+          <h3>Evaluation set</h3>
+          <p class="note">
+            Runs every question through the same path a real request takes.
+            One or two model calls per question, so it takes a minute.
+          </p>
+          <div style="margin-top:12px">
+            <button class="primary" id="runEval">Run evaluation</button>
+          </div>
+          <div class="bar" id="bar" hidden><div></div></div>
+          <p class="note" id="evalNote"></p>
+          <p class="error" id="evalError"></p>
+        </div>
+        <div id="evalResults"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const history = [];
+let docId = null;
+let pollTimer = null;
+
+// --- helpers ---
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = body.error ? body.error.message
+      : Array.isArray(body.detail) ? body.detail.map(d => d.msg).join('; ')
+      : body.detail || response.statusText;
+    throw new Error(detail);
+  }
+  return body;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// --- status and documents ---
+
+async function refreshStatus() {
+  try {
+    const health = await api('/health');
+    $('health').innerHTML = '';
+    $('health').append(el('span', 'dot'),
+      document.createTextNode(`${health.documents} document${health.documents === 1 ? '' : 's'} · ${health.chunks} chunks`));
+  } catch {
+    $('health').innerHTML = '<span class="dot off"></span>API unreachable';
+  }
+}
+
+async function refreshDocuments() {
+  const list = $('docs');
+  list.innerHTML = '';
+  let documents = [];
+  try { documents = await api('/documents'); } catch { /* shown by the health pill */ }
+
+  if (!documents.length) {
+    list.append(el('p', 'empty', 'Nothing indexed yet.'));
+    return;
+  }
+  list.append(docRow('All documents', `search across ${documents.length}`, null));
+  for (const doc of documents) {
+    list.append(docRow(doc.title || doc.filename, `${doc.pages} pages · ${doc.chunks} chunks`, doc.doc_id));
+  }
+}
+
+function docRow(name, meta, id) {
+  const label = el('label', 'doc');
+  const radio = el('input');
+  radio.type = 'radio';
+  radio.name = 'doc';
+  radio.checked = docId === id;
+  radio.onchange = () => { docId = id; };
+  const box = el('div');
+  box.append(el('div', 'name', name), el('div', 'meta', meta));
+  label.append(radio, box);
+  return label;
+}
+
+// --- ingestion ---
+
+$('uploadBtn').onclick = () => $('file').click();
+$('file').onchange = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const note = $('uploadNote');
+  note.textContent = `Indexing ${file.name}...`;
+  $('uploadBtn').disabled = true;
+
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const result = await api('/ingest', { method: 'POST', body: form });
+    note.textContent = result.duplicate
+      ? `${result.filename} was already indexed.`
+      : `Indexed ${result.filename}: ${result.pages} pages, ${result.chunks} chunks.`;
+    await Promise.all([refreshStatus(), refreshDocuments()]);
+  } catch (error) {
+    note.textContent = error.message;
+  } finally {
+    $('uploadBtn').disabled = false;
+    event.target.value = '';
+  }
+};
+
+// --- chat ---
+
+function addTurn(role, text, options = {}) {
+  const turn = el('div', `turn ${role}` + (options.refused ? ' refused' : ''));
+  turn.append(el('div', 'role', role === 'user' ? 'You' : 'Assistant'));
+  turn.append(el('div', 'bubble', text));
+
+  if (options.citations && options.citations.length) {
+    const box = el('div', 'cites');
+    for (const citation of options.citations) box.append(el('span', 'cite', citation.display));
+    turn.append(box);
+  }
+  if (options.trace) turn.append(traceBlock(options.trace));
+
+  $('messages').append(turn);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  return turn;
+}
+
+function traceBlock(trace) {
+  const details = el('details', 'trace');
+  const guards = trace.guards && trace.guards.length ? ` · guards: ${trace.guards.join(', ')}` : '';
+  const rewritten = trace.rewritten_query ? ` · rewritten: "${trace.rewritten_query}"` : '';
+  details.append(el('summary', null, `${trace.retrieved.length} chunks retrieved${rewritten}${guards}`));
+
+  const table = el('table');
+  for (const item of trace.retrieved) {
+    const row = el('tr');
+    row.append(el('td', item.used_as_evidence ? 'used' : '', item.used_as_evidence ? 'evidence' : '-'));
+    row.append(el('td', null, item.score.toFixed(3)));
+    row.append(el('td', null, `p${item.page_start}${item.page_end !== item.page_start ? '-' + item.page_end : ''}`));
+    row.append(el('td', null, item.section || ''));
+    table.append(row);
+  }
+  details.append(table);
+  return details;
+}
+
+$('composer').onsubmit = async (event) => {
+  event.preventDefault();
+  const question = $('question').value.trim();
+  if (!question) return;
+
+  addTurn('user', question);
+  $('question').value = '';
+  $('send').disabled = true;
+  const pending = addTurn('assistant', 'Thinking...');
+
+  try {
+    const response = await api('/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        doc_id: docId,
+        history: history.slice(-6),
+        debug: $('debug').checked,
+      }),
+    });
+    pending.remove();
+    addTurn('assistant', response.answer, {
+      citations: response.citations,
+      refused: !response.answerable,
+      trace: response.trace,
+    });
+    history.push({ role: 'user', content: question });
+    history.push({ role: 'assistant', content: response.answer });
+  } catch (error) {
+    pending.remove();
+    addTurn('assistant', error.message, { refused: true });
+  } finally {
+    $('send').disabled = false;
+    $('question').focus();
+  }
+};
+
+$('question').onkeydown = (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    $('composer').requestSubmit();
+  }
+};
+
+$('clear').onclick = () => { history.length = 0; $('messages').innerHTML = ''; };
+
+// --- evaluation ---
+
+$('runEval').onclick = async () => {
+  $('runEval').disabled = true;
+  $('evalError').textContent = '';
+  $('evalResults').innerHTML = '';
+  $('bar').hidden = false;
+  try {
+    renderEval(await api('/eval/run', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ doc_id: docId }),
+    }));
+    pollTimer = setInterval(pollEval, 1000);
+  } catch (error) {
+    $('evalError').textContent = error.message;
+    $('runEval').disabled = false;
+    $('bar').hidden = true;
+  }
+};
+
+async function pollEval() {
+  try { renderEval(await api('/eval/status')); }
+  catch (error) { $('evalError').textContent = error.message; stopPolling(); }
+}
+
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+  $('runEval').disabled = false;
+}
+
+function renderEval(status) {
+  $('bar').querySelector('div').style.width =
+    status.total ? `${(status.done / status.total) * 100}%` : '0';
+  $('evalNote').textContent = status.running
+    ? `Running question ${status.done} of ${status.total}...`
+    : status.total ? `Finished ${status.done} of ${status.total} questions.` : '';
+
+  if (status.error) $('evalError').textContent = status.error;
+  if (status.running) return;
+  if (pollTimer) stopPolling();
+  if (!status.summary) return;
+
+  const out = $('evalResults');
+  out.innerHTML = '';
+
+  const summary = el('div', 'card');
+  summary.append(el('h3', null, 'Summary'));
+  const table = el('table', 'data');
+  for (const [metric, value] of Object.entries(status.summary)) {
+    const row = el('tr');
+    row.append(el('td', null, metric), el('td', 'num', value));
+    table.append(row);
+  }
+  summary.append(table);
+  out.append(summary);
+
+  if (status.distribution.length) {
+    const card = el('div', 'card');
+    card.append(el('h3', null, 'Top retrieval score'));
+    card.append(el('p', 'note', 'No similarity threshold is applied. If these separate cleanly, one would be a cheap extra safeguard.'));
+    for (const line of status.distribution) card.append(el('div', 'mono', line.replace(/^- /, '')));
+    out.append(card);
+  }
+
+  const detail = el('div', 'card');
+  detail.append(el('h3', null, 'Per question'));
+  const rows = el('table', 'data');
+  const head = el('tr');
+  for (const column of ['ID', 'Type', 'Expected', 'Result', 'Recall', 'Coverage', 'Citations']) {
+    head.append(el('th', null, column));
+  }
+  rows.append(head);
+
+  for (const row of status.rows) {
+    const tr = el('tr');
+    tr.append(el('td', 'mono', row.id));
+    tr.append(el('td', null, row.type));
+    tr.append(el('td', null, row.should_be_answerable ? 'answer' : 'refuse'));
+    const correct = row.should_be_answerable === row.answerable;
+    tr.append(el('td', null)).lastChild.append(
+      el('span', `tag ${correct ? 'hit' : 'miss'}`, row.answerable ? 'answered' : 'refused'));
+    tr.append(el('td', null, flag(row.recall)));
+    tr.append(el('td', null, flag(row.coverage)));
+    tr.append(el('td', null, row.citations.join('; ') || '-'));
+    tr.title = row.answer;
+    rows.append(tr);
+  }
+  detail.append(rows);
+  detail.append(el('p', 'note', 'Hover a row to read the answer. Full report written to eval/results.md.'));
+  out.append(detail);
+}
+
+const flag = (value) => value === null ? 'n/a' : value ? 'hit' : 'miss';
+
+// --- tabs and boot ---
+
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    $('chatPanel').classList.toggle('active', tab.dataset.tab === 'chat');
+    $('evalPanel').classList.toggle('active', tab.dataset.tab === 'eval');
+  };
+}
+
+refreshStatus();
+refreshDocuments();
+api('/eval/status').then(status => { if (status.summary || status.running) renderEval(status); }).catch(() => {});
+</script>
+</body>
+</html>

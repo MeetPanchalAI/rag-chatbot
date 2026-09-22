@@ -25,16 +25,36 @@ python -m app.ingest_cli path/to/document.pdf
 uvicorn app.main:app --reload
 ```
 
-Open http://127.0.0.1:8000/docs to try it in the browser.
+Then open **http://127.0.0.1:8000** for the UI, or `/docs` for the API.
 
 ## Endpoints
 
 | Endpoint | Purpose |
 | --- | --- |
+| `GET /` | The UI |
 | `GET /health` | Service status and how much is indexed |
 | `GET /documents` | What has been ingested, with document ids |
 | `POST /ingest` | Upload a PDF (multipart). Small files only; see the note below |
 | `POST /chat` | Ask a question |
+| `POST /eval/run` | Start an evaluation run |
+| `GET /eval/status` | Progress and results of that run |
+
+## The UI
+
+One page at `/`, enough to exercise everything without a REST client:
+
+- **Upload a PDF** and watch the page and chunk counts change.
+- **Ask questions**, with follow-ups; citations appear under each answer and a
+  refusal is styled differently from an answer.
+- **Show what was retrieved** puts every retrieved chunk, its score, and which
+  ones became evidence under the reply.
+- **Scope the search** to one document or leave it across all of them.
+- **Run the evaluation** from the Evaluation tab, with a progress bar and the
+  full summary and per-question table when it finishes.
+
+It is one self-contained HTML file with no build step, no package manager and
+no CDN. The brief says not to spend significant time on frontend work, so this
+is a test harness with a clean face, not a product.
 
 ### Asking a question
 

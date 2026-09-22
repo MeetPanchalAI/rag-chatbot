@@ -177,6 +177,24 @@ was retrieved, top score, whether it was answerable, how many citations, which
 guards fired, and latency. `"debug": true` returns the same detail in the
 response, including per-chunk scores and the raw model output.
 
+## The UI
+
+A single static HTML file served at `/`, with no build step, no package manager
+and no CDN. It exists to exercise ingestion, chat, follow-ups, the retrieval
+trace and the evaluation without a REST client. The brief asks for a lightweight
+UI and warns against spending real time on the frontend, so it stays a test
+harness with a clean face.
+
+Running the evaluation from a browser needs more than a plain request: eighteen
+questions at one or two model calls each is about a minute, which is too long to
+hold a connection open. `POST /eval/run` starts a worker thread and returns
+immediately; the page polls `GET /eval/status` for progress and results. A
+failure on that thread is captured into the run status rather than disappearing
+into a log, and a second run is refused with a 409 while one is in flight.
+
+Scoring lives in `app/evaluation.py`, not in the eval script, so the command
+line and the UI run exactly the same code.
+
 ## Evaluation
 
 `eval/run_eval.py` runs the question set through the same pipeline a real

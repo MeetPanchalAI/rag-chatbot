@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     # Storage
     data_dir: Path = Path("./data")
+    # Where evaluation reports are written
+    eval_dir: Path = Path("./eval")
 
     # Chunking
     chunk_tokens: int = 500

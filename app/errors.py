@@ -44,3 +44,8 @@ class ProviderTimeout(AppError):
 class FileTooLarge(AppError):
     status_code = 413
     code = "file_too_large"
+
+
+class EvaluationRunning(AppError):
+    status_code = 409
+    code = "evaluation_running"

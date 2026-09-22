@@ -140,6 +140,7 @@ def settings(tmp_path) -> Settings:
     return Settings(
         openai_api_key="test-key",
         data_dir=tmp_path / "data",
+        eval_dir=tmp_path / "eval",
         chunk_tokens=120,
         chunk_overlap_tokens=20,
         retriever_top_k=3,

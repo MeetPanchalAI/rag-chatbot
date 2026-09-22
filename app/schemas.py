@@ -109,6 +109,23 @@ class HealthResponse(BaseModel):
     chunks: int
 
 
+# --- API: evaluation ---
+
+
+class EvalRequest(BaseModel):
+    doc_id: str | None = None
+
+
+class EvalStatus(BaseModel):
+    running: bool = False
+    done: int = 0
+    total: int = 0
+    summary: dict[str, str] | None = None
+    distribution: list[str] = Field(default_factory=list)
+    rows: list[dict] = Field(default_factory=list)
+    error: str | None = None
+
+
 # --- LLM contract ---
 
 
