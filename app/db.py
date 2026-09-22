@@ -144,12 +144,42 @@ class Database:
     def setup(self) -> None:
         with self.write() as connection:
             connection.executescript(SCHEMA)
+            for table, columns in ADDED_COLUMNS.items():
+                _add_missing_columns(connection, table, columns)
 
     def close(self) -> None:
         connection = getattr(self._local, "connection", None)
         if connection is not None:
             connection.close()
             self._local.connection = None
+
+
+# Columns added after the first release. Existing databases are widened in
+# place rather than rebuilt, so a run history survives an upgrade.
+ADDED_COLUMNS = {
+    "eval_runs": {"breakdown": "TEXT"},
+    "eval_results": {
+        "doc": "TEXT",
+        "expected_answer": "TEXT",
+        "cited_gold": "REAL",
+        "unsupported": "INTEGER",
+        "correctness": "INTEGER",
+        "groundedness": "INTEGER",
+        "citation_support": "INTEGER",
+        "completeness": "INTEGER",
+        "judge_reason": "TEXT",
+    },
+}
+
+
+def _add_missing_columns(connection, table: str, columns: dict[str, str]) -> None:
+    present = {row["name"] for row in connection.execute("PRAGMA table_info({})".format(table))}
+    for name, declaration in columns.items():
+        if name not in present:
+            connection.execute(
+                "ALTER TABLE {} ADD COLUMN {} {}".format(table, name, declaration)
+            )
+            log.info("Added column %s.%s", table, name)
 
 
 def loads(value: str | None, fallback):

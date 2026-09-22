@@ -62,8 +62,10 @@ def test_running_the_evaluation_scores_every_question(settings, store, simple_pd
     expected = len(load_questions())
 
     with TestClient(create_app(settings, store, providers)) as client:
-        client.post("/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")})
-        started = client.post("/eval/run", json={})
+        doc_id = client.post(
+            "/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")}
+        ).json()["doc_id"]
+        started = client.post("/eval/run", json={"doc_id": doc_id, "judge": False})
         assert started.status_code == 200
         assert started.json()["total"] == expected
 
@@ -72,7 +74,9 @@ def test_running_the_evaluation_scores_every_question(settings, store, simple_pd
     assert status["error"] is None
     assert status["done"] == expected
     assert len(status["rows"]) == expected
-    assert "Retrieval recall (any gold page found)" in status["summary"]
+    assert "Retrieval" in status["summary"]
+    assert status["summary"]["Correctness"] == "n/a", "judge was off, so nothing to report"
+    assert status["breakdown"], "the per-category breakdown is part of every run"
     assert {row["id"] for row in status["rows"]} == {q["id"] for q in load_questions()}
 
 
@@ -84,8 +88,10 @@ def test_the_report_is_written_where_configured(settings, store, simple_pdf):
     )
 
     with TestClient(create_app(settings, store, providers)) as client:
-        client.post("/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")})
-        client.post("/eval/run", json={})
+        doc_id = client.post(
+            "/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")}
+        ).json()["doc_id"]
+        client.post("/eval/run", json={"doc_id": doc_id, "judge": False})
         wait_for_finish(client)
 
     report = (settings.eval_dir / "results.md").read_text(encoding="utf-8")
@@ -141,9 +147,11 @@ def test_a_provider_failure_is_reported_rather_than_lost(settings, store, simple
     providers = FakeProviders(FakeEmbedder())
 
     with TestClient(create_app(settings, store, providers)) as client:
-        client.post("/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")})
+        doc_id = client.post(
+            "/ingest", files={"file": ("handbook.pdf", simple_pdf, "application/pdf")}
+        ).json()["doc_id"]
         providers.embedder = FakeEmbedder(fail_with=RuntimeError("upstream is down"))
-        client.post("/eval/run", json={})
+        client.post("/eval/run", json={"doc_id": doc_id, "judge": False})
         status = wait_for_finish(client)
 
     assert status["error"] is not None
@@ -164,3 +172,34 @@ def test_every_element_the_ui_script_reaches_for_exists(settings, store):
 
     assert used, "the check itself should find element lookups"
     assert used <= defined, "script reaches for missing elements: {}".format(used - defined)
+
+
+def test_the_ui_script_calls_no_function_it_does_not_define(settings, store):
+    """A page is not compiled, so a call to a renamed or deleted helper only
+    shows up as a console error at the moment someone demonstrates it."""
+    import re
+
+    providers = FakeProviders(FakeEmbedder())
+    with TestClient(create_app(settings, store, providers)) as client:
+        page = client.get("/").text
+
+    script = page.split("<script>")[1].split("</script>")[0]
+    defined = set(re.findall(r"function\s+([A-Za-z_$][\w$]*)\s*\(", script))
+    defined |= set(re.findall(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", script))
+    called = set(re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(", script))
+
+    language = {
+        "if", "for", "while", "switch", "catch", "return", "typeof", "function",
+        "await", "async", "new", "of", "in", "do", "else", "try",
+    }
+    builtins = {
+        "JSON", "Object", "Array", "String", "Number", "Boolean", "Math", "Date",
+        "Promise", "Error", "parseInt", "parseFloat", "isNaN", "setInterval",
+        "clearInterval", "setTimeout", "fetch", "confirm", "alert", "document",
+        "window", "localStorage", "FormData", "Set", "Map",
+    }
+    # CSS written inside template literals, not JavaScript calls.
+    css = {"calc", "var"}
+
+    missing = called - defined - language - builtins - css
+    assert not missing, "the page calls undefined functions: {}".format(sorted(missing))

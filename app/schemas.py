@@ -94,6 +94,7 @@ class Trace(BaseModel):
     rewritten_query: str | None = None
     retrieved: list[RetrievalTraceItem] = Field(default_factory=list)
     top_score: float | None = None
+    evidence: str | None = None
     raw_model_output: str | None = None
     guards: list[str] = Field(default_factory=list)
 
@@ -148,6 +149,9 @@ class EvalRequest(BaseModel):
     doc_id: str | None = None
     label: str | None = Field(default=None, max_length=120,
                               description="A note about what changed for this run.")
+    judge: bool = Field(default=True,
+                        description="Score answers with the LLM judge. Off gives "
+                                    "retrieval metrics only, at no extra model cost.")
 
 
 class EvalRunInfo(BaseModel):
@@ -179,6 +183,7 @@ class EvalStatus(BaseModel):
     headline: list[dict] = Field(default_factory=list)
     distribution: list[str] = Field(default_factory=list)
     ranges: list[dict] = Field(default_factory=list)
+    breakdown: list[dict] = Field(default_factory=list)
     rows: list[dict] = Field(default_factory=list)
     error: str | None = None
 

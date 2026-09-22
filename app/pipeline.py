@@ -141,6 +141,7 @@ def answer_question(
             rewritten_query=query if was_rewritten else None,
             retrieved=_trace_items(retrieved, used),
             top_score=top_score,
+            evidence=evidence or None,
             raw_model_output=result.raw_output or None,
             guards=result.guards,
         )

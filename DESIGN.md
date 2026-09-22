@@ -218,28 +218,12 @@ line and the UI run exactly the same code.
 
 ## Evaluation
 
-`eval/run_eval.py` runs the question set through the same pipeline a real
-request uses, so the numbers describe the shipped system.
+25 questions over two documents, scored on five metrics and broken down by
+category. Retrieval is scored arithmetically against gold pages; the answer is
+scored by an LLM judge on four separate axes, never blended into one number.
+Every run is stored with the settings that produced it.
 
-Gold labels are **pages**, not chunk ids, so the evaluation set survives a
-change to chunking.
-
-| Metric | Question it answers |
-| --- | --- |
-| Recall | Was any page holding the answer retrieved? |
-| Coverage | Were **all** of them retrieved? |
-| Refusal rate on unanswerable questions | Does it admit when it does not know? |
-| Hallucination rate | How often does it answer what it cannot answer? |
-| Citation precision | Does the cited page actually hold the answer? |
-| Keyword screen | Does the answer contain the expected facts? |
-
-Recall and coverage are separated deliberately. "Any gold page found" is too
-lenient for questions that need several passages, and that category is exactly
-where retrieval tends to fail quietly.
-
-The keyword screen is a screen, not a verdict: it catches regressions cheaply
-but cannot judge phrasing. Citation relevance and answer quality still need a
-human read of `results.md`, which lists every failure.
+Full methodology and its limits: **[EVAL.md](EVAL.md)**.
 
 ## Limitations, and what comes next
 

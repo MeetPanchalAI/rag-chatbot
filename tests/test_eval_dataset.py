@@ -29,8 +29,11 @@ def rows() -> list[dict]:
     return [json.loads(line) for line in lines if line.strip()]
 
 
-def test_the_set_is_the_size_the_brief_asks_for(rows):
-    assert 15 <= len(rows) <= 20
+def test_the_set_covers_every_category_evenly(rows):
+    counts = {name: sum(1 for r in rows if r["type"] == name) for name in REQUIRED_TYPES}
+
+    assert len(rows) == 25
+    assert set(counts.values()) == {5}, "five questions in each category"
 
 
 def test_every_category_is_covered(rows):
@@ -55,7 +58,24 @@ def test_unanswerable_questions_claim_no_evidence(rows):
     assert unanswerable, "the set must test refusal"
     for row in unanswerable:
         assert row["gold_pages"] == []
-        assert row["expected_answer_contains"] == []
+
+
+def test_every_question_names_the_document_it_belongs_to(rows):
+    # Several unanswerable questions ARE answerable from the other document, so
+    # scoping each question to its own is what makes them an abstention test.
+    for row in rows:
+        assert row["doc"], "{} does not name a document".format(row["id"])
+
+
+def test_every_question_carries_a_reference_answer(rows):
+    for row in rows:
+        assert row["expected_answer"].strip(), "{} has nothing to judge against".format(row["id"])
+
+
+def test_the_unanswerable_questions_are_split_across_both_documents(rows):
+    docs = {row["doc"] for row in rows if not row["answerable"]}
+
+    assert len(docs) > 1, "abstention must be tested in both directions"
 
 
 def test_follow_ups_actually_depend_on_history(rows):

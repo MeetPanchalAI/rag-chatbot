@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Models
     llm_model: str = "gpt-5.6-luna"
     rewrite_model: str = ""
+    judge_model: str = ""
     embedding_model: str = "text-embedding-3-small"
     llm_temperature: float = 1.0
     llm_reasoning_effort: str = "low"
@@ -48,6 +49,10 @@ class Settings(BaseSettings):
     @property
     def rewrite_model_name(self) -> str:
         return self.rewrite_model or self.llm_model
+
+    @property
+    def judge_model_name(self) -> str:
+        return self.judge_model or self.llm_model
 
 
 @lru_cache

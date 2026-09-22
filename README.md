@@ -130,45 +130,26 @@ no network call.
 
 ## Evaluation
 
-`eval/questions.jsonl` holds the question set, one JSON object per line:
+25 questions over two documents, five in each of the five behaviours the brief
+names. Five metrics per run, also broken down by category:
 
-| Field | Meaning |
+| Metric | Answers |
 | --- | --- |
-| `id`, `type` | Identifier and category |
-| `question` | What to ask |
-| `history` | Previous turns, for follow-up questions |
-| `answerable` | Whether the document should be able to answer it |
-| `gold_pages` | Pages that hold the answer |
-| `expected_answer_contains` | Words the answer should contain |
-
-The set in the repository is 18 questions written against this assignment
-brief, in the five categories it asks for:
-
-| Category | Count | What it tests |
-| --- | --- | --- |
-| `factual` | 4 | One passage, one page |
-| `multi_passage` | 4 | Answers that span two pages |
-| `follow_up` | 3 | Questions meaningless without the history |
-| `unanswerable` | 3 | Does it admit it does not know? |
-| `similar_sections` | 4 | Several sections compete for the same query |
-
-Every gold page was checked against the indexed text, so a retrieval miss is a
-real miss and not a bad label.
-
-The PDF itself is not committed. To reproduce the run, index your own copy of
-the assignment brief first:
+| Retrieval | Did retrieval find the evidence? |
+| Correctness | Is the answer right? |
+| Groundedness | Is it supported by the evidence shown? |
+| Citation support | Does the cited page hold the claim? |
+| Abstention | Does it refuse when the document cannot answer? |
 
 ```bash
-python -m app.ingest_cli AI_Engineering_Task_1_RAG.pdf
-python -m eval.run_eval
+python -m eval.run_eval                 # or use the Evaluation tab
+python -m eval.run_eval --no-judge      # retrieval metrics only, no judge calls
 ```
 
-This writes `eval/results.md` (a report) and `eval/results.jsonl` (raw scores).
-It needs an indexed document and an API key, and costs one or two model calls
-per question. See DESIGN.md for what the metrics mean.
+Writes `eval/results.md` and `eval/results.jsonl`, and stores the run with the
+settings that produced it so two runs can be compared.
 
-To evaluate a different PDF, replace `questions.jsonl` with questions written
-against it. Nothing in the code is tied to this document.
+Methodology, and why each metric is measured the way it is: **[EVAL.md](EVAL.md)**.
 
 ## Configuration
 
@@ -203,4 +184,4 @@ The API works with any OpenAI-compatible endpoint via `OPENAI_BASE_URL`.
 - **An older index** written as `chunks.jsonl` + `embeddings.npy` is imported
   automatically on first start, and the old files are renamed `*.migrated`.
 
-Full design rationale, trade-offs and limitations: [DESIGN.md](DESIGN.md).
+Design rationale and trade-offs: [DESIGN.md](DESIGN.md). Evaluation methodology: [EVAL.md](EVAL.md).

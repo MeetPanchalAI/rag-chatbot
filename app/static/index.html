@@ -365,6 +365,7 @@ ul.fails li { margin-bottom: 4px; }
           <div class="actions">
             <input id="label" placeholder="What changed? (optional label)" maxlength="120">
             <button class="primary" id="run">Run evaluation</button>
+            <label class="toggle"><input type="checkbox" id="judge" checked> Judge the answers</label>
             <span class="say" id="says"></span>
           </div>
           <div class="track" id="track" hidden><i></i></div>
@@ -711,7 +712,10 @@ $('run').onclick = async () => {
     drawEval(await api('/eval/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ doc_id: docId, label: $('label').value.trim() || null }),
+      body: JSON.stringify({
+        doc_id: docId, label: $('label').value.trim() || null,
+        judge: $('judge').checked,
+      }),
     }));
     poll();
   } catch (e) {
@@ -746,6 +750,7 @@ function drawEval(s) {
   const out = $('out');
   out.innerHTML = '';
   if (s.headline.length) out.append(kpiRow(s.headline));
+  if (s.breakdown && s.breakdown.length) out.append(byCategory(s.breakdown));
   if (s.ranges.length) out.append(separation(s.ranges));
   out.append(summaryCard(s.summary));
   out.append(perQuestion(s.rows));
@@ -822,6 +827,35 @@ function separation(ranges) {
   return card;
 }
 
+/* The same five metrics per category. This is the view that says *where* the
+   system is weak, which a single set of averages cannot. */
+function byCategory(groups) {
+  const card = el('div', 'card');
+  card.append(el('h3', null, 'By category'));
+  card.append(el('p', 'sub', 'The five metrics again, split by what each question is testing.'));
+
+  const table = el('table', 'data');
+  const head = el('tr');
+  for (const c of ['Category', 'n', 'Retrieval', 'Correctness', 'Groundedness', 'Citations', 'Abstention']) {
+    head.append(el('th', null, c));
+  }
+  table.append(head);
+
+  for (const g of groups) {
+    const tr = el('tr');
+    tr.append(el('td', null, g.type.replace(/_/g, ' ')));
+    tr.append(el('td', 'num', String(g.count)));
+    for (const key of ['retrieval', 'correctness', 'groundedness', 'citation_support', 'abstention']) {
+      tr.append(el('td', 'num', pct(g[key])));
+    }
+    table.append(tr);
+  }
+  const scroll = el('div', 'scroll');
+  scroll.append(table);
+  card.append(scroll);
+  return card;
+}
+
 function summaryCard(summary) {
   const card = el('div', 'card');
   card.append(el('h3', null, 'Every metric'));
@@ -843,7 +877,7 @@ function perQuestion(rows) {
 
   const table = el('table', 'grid');
   const head = el('tr');
-  for (const c of ['ID', 'Type', 'Expected', 'Result', 'Recall', 'Coverage', 'Sources']) {
+  for (const c of ['ID', 'Doc', 'Type', 'Expected', 'Result', 'Recall', 'Corr', 'Grnd', 'Cite', 'Sources']) {
     head.append(el('th', null, c));
   }
   table.append(head);
@@ -851,6 +885,7 @@ function perQuestion(rows) {
   for (const r of rows) {
     const tr = el('tr');
     tr.append(el('td', 'id', r.id));
+    tr.append(el('td', null, r.doc || '—'));
     tr.append(el('td', null, r.type.replace(/_/g, ' ')));
     tr.append(el('td', null, r.should_be_answerable ? 'answer' : 'refuse'));
 
@@ -859,10 +894,13 @@ function perQuestion(rows) {
       r.answerable ? 'answered' : 'refused'));
     tr.append(got);
 
-    tr.append(flagCell(r.recall));
-    tr.append(flagCell(r.coverage));
+    tr.append(el('td', 'num', r.recall === null || r.recall === undefined ? '—' : pct(r.recall)));
+    for (const key of ['correctness', 'groundedness', 'citation_support']) {
+      tr.append(scoreCell(r[key]));
+    }
     tr.append(el('td', null, r.citations.join('; ') || '—'));
-    tr.title = r.answer;
+    tr.title = [r.answer, r.judge_reason && 'Judge: ' + r.judge_reason]
+      .filter(Boolean).join('\n\n');
     table.append(tr);
   }
   const scroll = el('div', 'scroll');
@@ -870,21 +908,30 @@ function perQuestion(rows) {
   card.append(scroll);
 
   const bad = rows.filter(r =>
-    r.should_be_answerable !== r.answerable || r.recall === false || r.keywords_found === false);
+    r.should_be_answerable !== r.answerable ||
+    (r.recall !== null && r.recall !== undefined && r.recall < 1) ||
+    ['correctness', 'groundedness', 'citation_support', 'completeness']
+      .some(k => r[k] !== null && r[k] !== undefined && r[k] < 2));
   if (bad.length) {
     card.append(el('h3', null, 'Worth a look'));
     const list = el('ul', 'fails');
-    for (const r of bad) list.append(el('li', null, `${r.id} (${r.type.replace(/_/g, ' ')}): ${r.question}`));
+    for (const r of bad) {
+      list.append(el('li', null,
+        `${r.id} (${r.type.replace(/_/g, ' ')}): ${r.question}` +
+        (r.judge_reason ? ' — ' + r.judge_reason : '')));
+    }
     card.append(list);
   }
   card.append(el('p', 'foot', 'Hover a row to read the answer. The full report is written to eval/results.md.'));
   return card;
 }
 
-function flagCell(v) {
-  if (v === null || v === undefined) return el('td', null, '—');
-  const td = el('td');
-  td.append(el('span', 'pill ' + (v ? 'ok' : 'no'), v ? 'hit' : 'miss'));
+/* Judge scores are 0, 1 or 2. A blank means the question was not judged, which
+   is different from scoring zero. */
+function scoreCell(v) {
+  if (v === null || v === undefined) return el('td', 'num', '-');
+  const td = el('td', 'num');
+  td.append(el('span', 'pill ' + (v === 2 ? 'ok' : v === 0 ? 'no' : ''), String(v)));
   return td;
 }
 

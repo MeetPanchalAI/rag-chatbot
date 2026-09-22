@@ -53,26 +53,31 @@ def progress(db: Database, run_id: int, done: int) -> None:
         connection.execute("UPDATE eval_runs SET done = ? WHERE id = ?", (done, run_id))
 
 
-def finish(db: Database, run_id: int, rows: list[dict], summary: dict, headline: list, ranges: list) -> None:
+def finish(db: Database, run_id: int, rows: list[dict], summary: dict, headline: list,
+           ranges: list, breakdown: list) -> None:
     with db.write() as connection:
         connection.execute(
             "UPDATE eval_runs SET status = 'done', finished_at = ?, summary = ?, "
-            "headline = ?, ranges = ? WHERE id = ?",
-            (_now(), json.dumps(summary), json.dumps(headline), json.dumps(ranges), run_id),
+            "headline = ?, ranges = ?, breakdown = ? WHERE id = ?",
+            (_now(), json.dumps(summary), json.dumps(headline), json.dumps(ranges),
+             json.dumps(breakdown), run_id),
         )
         for row in rows:
             connection.execute(
-                "INSERT INTO eval_results (run_id, question_id, type, question, "
-                "should_be_answerable, answerable, answer, citations, top_score, "
-                "recall, coverage, citation_precision, keywords_found, guards) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO eval_results (run_id, question_id, doc, type, question, "
+                "should_be_answerable, answerable, answer, expected_answer, citations, "
+                "top_score, recall, cited_gold, unsupported, correctness, groundedness, "
+                "citation_support, completeness, judge_reason, guards) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    run_id, row["id"], row["type"], row["question"],
+                    run_id, row["id"], row.get("doc"), row["type"], row["question"],
                     int(row["should_be_answerable"]), int(row["answerable"]),
-                    row["answer"], json.dumps(row["citations"]), row["top_score"],
-                    _tri(row["recall"]), _tri(row["coverage"]),
-                    row["citation_precision"], _tri(row["keywords_found"]),
-                    json.dumps(row["guards"]),
+                    row["answer"], row.get("expected_answer"),
+                    json.dumps(row["citations"]), row["top_score"],
+                    row["recall"], row.get("cited_gold"), int(bool(row.get("unsupported"))),
+                    row.get("correctness"), row.get("groundedness"),
+                    row.get("citation_support"), row.get("completeness"),
+                    row.get("judge_reason"), json.dumps(row["guards"]),
                 ),
             )
 
@@ -110,6 +115,7 @@ def get_run(db: Database, run_id: int) -> EvalStatus:
         summary=loads(row["summary"], None),
         headline=loads(row["headline"], []),
         ranges=loads(row["ranges"], []),
+        breakdown=loads(row["breakdown"], []),
         rows=[_result(r) for r in results],
         error=row["error"],
     )
@@ -154,16 +160,22 @@ def _info(row) -> EvalRunInfo:
 def _result(row) -> dict:
     return {
         "id": row["question_id"],
+        "doc": row["doc"] or "",
         "type": row["type"],
         "question": row["question"],
         "should_be_answerable": bool(row["should_be_answerable"]),
         "answerable": bool(row["answerable"]),
         "answer": row["answer"],
+        "expected_answer": row["expected_answer"] or "",
         "citations": loads(row["citations"], []),
         "top_score": row["top_score"],
-        "recall": _bool(row["recall"]),
-        "coverage": _bool(row["coverage"]),
-        "citation_precision": row["citation_precision"],
-        "keywords_found": _bool(row["keywords_found"]),
+        "recall": row["recall"],
+        "cited_gold": row["cited_gold"],
+        "unsupported": bool(row["unsupported"]),
+        "correctness": row["correctness"],
+        "groundedness": row["groundedness"],
+        "citation_support": row["citation_support"],
+        "completeness": row["completeness"],
+        "judge_reason": row["judge_reason"] or "",
         "guards": loads(row["guards"], []),
     }

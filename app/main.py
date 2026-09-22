@@ -19,6 +19,7 @@ from app.config import Settings, get_settings
 from app.db import Database
 from app.errors import AppError, EvaluationRunning, FileTooLarge, UnsupportedFile
 from app.evaluation import (
+    breakdown,
     headline,
     load_questions,
     run_evaluation,
@@ -56,6 +57,7 @@ class Providers:
         self._embedder: Embedder | None = None
         self._llm: LLM | None = None
         self._rewrite_llm: LLM | None = None
+        self._judge_llm: LLM | None = None
 
     @property
     def embedder(self) -> Embedder:
@@ -76,6 +78,14 @@ class Providers:
                 self._settings, model=self._settings.rewrite_model_name
             )
         return self._rewrite_llm
+
+    @property
+    def judge_llm(self) -> LLM:
+        if self._judge_llm is None:
+            self._judge_llm = OpenAILLM(
+                self._settings, model=self._settings.judge_model_name
+            )
+        return self._judge_llm
 
 
 def create_app(
@@ -263,10 +273,12 @@ def create_app(
                 rows = run_evaluation(
                     questions, store_, providers_.embedder, providers_.llm,
                     providers_.rewrite_llm, settings, doc_id=request.doc_id,
+                    judge_llm=getattr(providers_, "judge_llm", None) if request.judge else None,
                     on_progress=lambda done, _total: eval_runs.progress(db, run_id, done),
                 )
                 eval_runs.finish(
-                    db, run_id, rows, summarise(rows), headline(rows), score_ranges(rows)
+                    db, run_id, rows, summarise(rows), headline(rows),
+                    score_ranges(rows), breakdown(rows),
                 )
                 out_dir = settings.eval_dir
                 out_dir.mkdir(parents=True, exist_ok=True)

@@ -129,16 +129,16 @@ def test_conversations_can_be_listed_and_deleted(settings, store, simple_pdf):
 
 
 def test_every_run_is_kept_with_the_settings_that_produced_it(settings, store, simple_pdf):
-    client, _, _ = loaded(
+    client, _, doc_id = loaded(
         settings, store, simple_pdf,
         llm=FakeLLM(*[answer("Fifty units.") for _ in range(120)]),
         rewrite_llm=FakeLLM(*["standalone" for _ in range(40)]),
     )
 
-    client.post("/eval/run", json={"label": "baseline"})
+    client.post("/eval/run", json={"label": "baseline", "doc_id": doc_id, "judge": False})
     wait_for_finish(client)
     settings.retriever_top_k = 5
-    client.post("/eval/run", json={"label": "top_k 5"})
+    client.post("/eval/run", json={"label": "top_k 5", "doc_id": doc_id, "judge": False})
     wait_for_finish(client)
 
     runs = client.get("/eval/runs").json()
@@ -151,12 +151,12 @@ def test_every_run_is_kept_with_the_settings_that_produced_it(settings, store, s
 
 
 def test_an_old_run_can_be_read_back_in_full(settings, store, simple_pdf):
-    client, _, _ = loaded(
+    client, _, doc_id = loaded(
         settings, store, simple_pdf,
         llm=FakeLLM(*[answer("Fifty units.") for _ in range(120)]),
         rewrite_llm=FakeLLM(*["standalone" for _ in range(40)]),
     )
-    client.post("/eval/run", json={})
+    client.post("/eval/run", json={"doc_id": doc_id, "judge": False})
     live = wait_for_finish(client)
 
     stored = client.get("/eval/runs/{}".format(live["run_id"])).json()
@@ -169,12 +169,12 @@ def test_an_old_run_can_be_read_back_in_full(settings, store, simple_pdf):
 
 
 def test_a_run_can_be_deleted_and_takes_its_results_with_it(settings, store, simple_pdf):
-    client, _, _ = loaded(
+    client, _, doc_id = loaded(
         settings, store, simple_pdf,
         llm=FakeLLM(*[answer("Fifty units.") for _ in range(120)]),
         rewrite_llm=FakeLLM(*["standalone" for _ in range(40)]),
     )
-    client.post("/eval/run", json={})
+    client.post("/eval/run", json={"doc_id": doc_id, "judge": False})
     run_id = wait_for_finish(client)["run_id"]
 
     assert client.delete("/eval/runs/{}".format(run_id)).status_code == 200

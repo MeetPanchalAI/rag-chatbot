@@ -25,6 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--questions", type=Path, default=ROOT / "questions.jsonl")
     parser.add_argument("--doc-id", default=None, help="restrict every query to one document")
     parser.add_argument("--out", type=Path, default=ROOT / "results.md")
+    parser.add_argument("--no-judge", action="store_true",
+                        help="retrieval metrics only, no judge calls")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -48,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         providers.rewrite_llm,
         settings,
         doc_id=args.doc_id,
+        judge_llm=None if args.no_judge else providers.judge_llm,
         on_progress=progress,
     )
 
