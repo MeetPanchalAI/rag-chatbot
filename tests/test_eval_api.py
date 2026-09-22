@@ -126,3 +126,19 @@ def test_a_provider_failure_is_reported_rather_than_lost(settings, store, simple
 
     assert status["error"] is not None
     assert "upstream is down" in status["error"]
+
+
+def test_every_element_the_ui_script_reaches_for_exists(settings, store):
+    """The page is hand-written, so a removed element leaves a dead reference
+    that only shows up as a console error in front of whoever is demoing."""
+    import re
+
+    providers = FakeProviders(FakeEmbedder())
+    with TestClient(create_app(settings, store, providers)) as client:
+        page = client.get("/").text
+
+    defined = set(re.findall(r'id="([^"]+)"', page))
+    used = set(re.findall(r"\$\('([^']+)'\)", page))
+
+    assert used, "the check itself should find element lookups"
+    assert used <= defined, "script reaches for missing elements: {}".format(used - defined)

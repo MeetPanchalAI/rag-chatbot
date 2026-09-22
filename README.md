@@ -46,6 +46,9 @@ One page at `/`, enough to exercise everything without a REST client:
 - **Upload a PDF** and watch the page and chunk counts change.
 - **Ask questions**, with follow-ups; citations appear under each answer and a
   refusal is styled differently from an answer.
+- **Keep several conversations** side by side and switch between them. The
+  server holds no session (history travels with each request), so these cost
+  nothing on the backend and live in the browser.
 - **Show what was retrieved** puts every retrieved chunk, its score, and which
   ones became evidence under the reply.
 - **Scope the search** to one document or leave it across all of them.
