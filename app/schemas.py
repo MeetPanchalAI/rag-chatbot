@@ -142,6 +142,36 @@ class NewConversation(BaseModel):
     doc_id: str | None = None
 
 
+# --- API: activity ---
+
+
+class ActivityStats(BaseModel):
+    questions: int = 0
+    answered: int = 0
+    refused: int = 0
+    answered_share: float | None = None
+    median_latency_ms: float | None = None
+    median_top_score: float | None = None
+    guards: dict[str, int] = Field(default_factory=dict)
+
+
+class ActivityItem(BaseModel):
+    at: str
+    question: str
+    rewritten: str | None = None
+    answerable: bool
+    retrieved: int = 0
+    citations: int = 0
+    top_score: float | None = None
+    latency_ms: int = 0
+    guards: list[str] = Field(default_factory=list)
+
+
+class Activity(BaseModel):
+    stats: ActivityStats
+    recent: list[ActivityItem] = Field(default_factory=list)
+
+
 # --- API: evaluation ---
 
 

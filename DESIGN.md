@@ -16,7 +16,9 @@ question + history ─► rewrite ─► retrieve ◄─────────
 | `vector_store.py` | Storage and search |
 | `retrieval.py` | Query rewriting, search, building the evidence |
 | `generation.py` | The prompt, and the guards on what comes back |
+| `rerank.py` | Reorders candidates before answering |
 | `judge.py` | Scores answers during evaluation |
+| `activity.py` | The record behind the dashboard |
 | `pipeline.py` | Wires the flow; used by the API and the evaluation alike |
 | `providers.py` | The only file that talks to OpenAI |
 | `main.py` | HTTP: validation, wiring, error mapping |
@@ -63,11 +65,31 @@ Three details that matter more than they look:
 Dense cosine similarity over `text-embedding-3-small`, top 6 chunks, trimmed to
 a 4000-token evidence budget.
 
-Dense-only is the right start: it handles paraphrase, which is how people ask
-questions, and it is one moving part instead of two. Its known weakness is exact
-identifiers — codes, names, amounts — where keyword search does better. Hybrid
-search is the first thing to add, and the evaluation is built to show whether
-it is needed.
+Dense search handles paraphrase, which is how people ask questions. Its weakness
+is exact identifiers — codes, names, amounts — that embeddings blur together.
+
+**Hybrid search** adds BM25 over the same chunks and fuses the two with
+reciprocal rank fusion: each ranker contributes `1/(60 + rank)`. Fusing on *rank*
+rather than score is the point — a cosine similarity and a BM25 score are not on
+the same scale and cannot be added, but their orderings can be combined. It is on
+by default because it costs no extra API call, only local computation.
+
+Two details found by running it on the real corpus. A chunk counts as a keyword
+match if it *contains a query term*, not if its score is positive: when a term
+appears in most of a small corpus, BM25 gives it a negative weight, and filtering
+on score would drop real matches. And single-character query terms are ignored —
+in a maths text `k` and `n` appear on nearly every page, so a query containing
+one matches everything and ranks noise.
+
+**Reranking** is off by default because it costs a model call per question. When
+on, retrieval fetches 20 candidates and the model orders them by usefulness
+before the top 6 become evidence. Similarity to the question is not the same as
+being useful for answering it. If the reranker fails or returns nonsense, the
+original order is kept: a reranker must not be able to make retrieval worse than
+not having one.
+
+Both are recorded with every evaluation run, so the gain from each is measured
+rather than assumed.
 
 **Follow-ups** are rewritten into standalone queries before the search. *"What
 about international applicants?"* finds nothing on its own. The rewrite costs one
@@ -78,7 +100,8 @@ used to read the question, never as evidence.
 ## Storage
 
 One SQLite file, `data/app.db`: documents, chunks with their vectors,
-conversations, and evaluation runs. The original PDFs sit in `data/documents/`.
+conversations, answered questions, and evaluation runs. The original PDFs sit in
+`data/documents/`.
 
 **Why vectors go in the database and PDFs do not.** A PDF is only ever read
 whole, so putting it in a table you query makes every scan and backup carry
@@ -151,10 +174,21 @@ broken dependency is an error status.
 
 ## Observability
 
-Every `/chat` logs one JSON line: request id, rewritten query, how much was
+Every `/chat` logs one JSON line — request id, rewritten query, how much was
 retrieved, top score, whether it was answerable, citation count, which guards
-fired, latency. `"debug": true` returns the same detail in the response,
-including per-chunk scores, the evidence sent, and the raw model output.
+fired, latency — and stores the same record in the database.
+
+A log is fine for tailing and useless for answering "how often does it refuse?".
+The **Activity tab** counts the last 500 questions: how many were answered, the
+median latency, the median retrieval score, and which guards fired, over a list
+of recent questions. Recording never blocks an answer; if the write fails the
+answer still returns.
+
+An evaluation run passes no recorder, so a benchmark does not fill the dashboard
+with questions nobody asked.
+
+`"debug": true` returns the full detail in the response: per-chunk scores, the
+evidence sent, and the raw model output.
 
 ## Evaluation
 
@@ -207,7 +241,8 @@ many near-identical sections, and streaming responses.
 
 | Decision | Choice | Why | Cost |
 | --- | --- | --- | --- |
-| Retrieval | Dense only | Handles paraphrase; one moving part | Misses exact identifiers |
+| Retrieval | Dense + BM25, fused by rank | Catches paraphrase and exact terms | Two indexes to keep in step |
+| Reranking | LLM, off by default | Relevance is not usefulness | One model call per question |
 | Chunk size | 500 tokens, 75 overlap | Coherent passages, precise retrieval | Boundaries can still split an answer |
 | Headings | Table of contents first | Authoritative, no guessing | Falls back to page-only citations |
 | Embedded text | Prefixed with section title | Anchors context-free chunks | Slightly more to embed |

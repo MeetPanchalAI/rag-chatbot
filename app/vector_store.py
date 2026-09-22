@@ -13,15 +13,26 @@ deleted with one statement. See DESIGN.md.
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
+from rank_bm25 import BM25Okapi
 
 from app.db import Database
 from app.errors import DocumentNotFound
 from app.schemas import Chunk, DocumentInfo, RetrievedChunk
 
 log = logging.getLogger(__name__)
+
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def tokenise(text: str) -> list[str]:
+    """Words for the keyword index. No stemming: the gain is small and it hides
+    the exact identifiers keyword search exists to catch."""
+    return _WORD.findall(text.lower())
+
 
 LEGACY_CHUNKS = "chunks.jsonl"
 LEGACY_EMBEDDINGS = "embeddings.npy"
@@ -40,6 +51,7 @@ class VectorStore:
         self.chunks: list[Chunk] = []
         self.embeddings = np.zeros((0, 0), dtype=np.float32)
         self.documents: dict[str, DocumentInfo] = {}
+        self._bm25: BM25Okapi | None = None
 
     # --- loading ---
 
@@ -61,6 +73,7 @@ class VectorStore:
             if rows
             else np.zeros((0, 0), dtype=np.float32)
         )
+        self._build_keyword_index()
         log.info(
             "Loaded %d chunks from %d documents.", len(self.chunks), len(self.documents)
         )
@@ -139,6 +152,7 @@ class VectorStore:
         self.documents[info.doc_id] = info
         self.chunks.extend(chunks)
         self.embeddings = matrix if not self.embeddings.size else np.vstack([self.embeddings, matrix])
+        self._build_keyword_index()
 
     def delete_document(self, doc_id: str) -> DocumentInfo:
         """Remove a document, its chunks and its stored PDF."""
@@ -159,8 +173,13 @@ class VectorStore:
             self.embeddings[keep] if keep else np.zeros((0, 0), dtype=np.float32)
         )
         self.documents.pop(doc_id, None)
+        self._build_keyword_index()
         log.info("Deleted document %s (%s).", doc_id[:12], info.filename)
         return info
+
+    def _build_keyword_index(self) -> None:
+        """Rebuild the BM25 index. It is derived from the chunks, like the matrix."""
+        self._bm25 = BM25Okapi([tokenise(c.text) for c in self.chunks]) if self.chunks else None
 
     # --- reading ---
 
@@ -186,13 +205,25 @@ class VectorStore:
             return None
         return self.dir / row["source_file"]
 
+    def _candidates(self, doc_id: str | None) -> np.ndarray:
+        if doc_id is not None and not self.has_document(doc_id):
+            raise DocumentNotFound("No document with id " + doc_id)
+        if doc_id is None:
+            return np.arange(len(self.chunks))
+        return np.flatnonzero(np.array([c.doc_id == doc_id for c in self.chunks]))
+
+    def _ranked(self, scores: np.ndarray, candidates: np.ndarray, top_k: int) -> list[int]:
+        if candidates.size == 0 or top_k <= 0:
+            return []
+        k = min(top_k, candidates.size)
+        return [int(i) for i in candidates[np.argsort(-scores[candidates], kind="stable")[:k]]]
+
     def search(
         self, query_vector: list[float], top_k: int, doc_id: str | None = None
     ) -> list[RetrievedChunk]:
-        """Return the top_k most similar chunks, optionally within one document."""
-        if doc_id is not None and not self.has_document(doc_id):
-            raise DocumentNotFound("No document with id " + doc_id)
+        """Dense search: the top_k most similar chunks, optionally within one document."""
         if not self.chunks or top_k <= 0:
+            self._candidates(doc_id)  # still raise for an unknown document
             return []
 
         query = np.asarray(query_vector, dtype=np.float32)
@@ -201,18 +232,37 @@ class VectorStore:
             raise RuntimeError("Query embedding does not match the stored index dimension.")
 
         scores = self.embeddings @ query
-        if doc_id is not None:
-            candidates = np.flatnonzero(np.array([c.doc_id == doc_id for c in self.chunks]))
-        else:
-            candidates = np.arange(len(self.chunks))
-        if candidates.size == 0:
+        return [
+            RetrievedChunk(chunk=self.chunks[i], score=round(float(scores[i]), 6))
+            for i in self._ranked(scores, self._candidates(doc_id), top_k)
+        ]
+
+    def keyword_search(
+        self, query: str, top_k: int, doc_id: str | None = None
+    ) -> list[RetrievedChunk]:
+        """BM25 over the same chunks. Catches exact terms that embeddings blur."""
+        candidates = self._candidates(doc_id)
+        # Single characters are indexed but never searched on: in a maths text
+        # "k" and "n" appear on nearly every page, so a query containing one
+        # matches everything and ranks noise.
+        tokens = [t for t in tokenise(query) if len(t) > 1]
+        if self._bm25 is None or not tokens or top_k <= 0:
             return []
 
-        k = min(top_k, candidates.size)
-        best = candidates[np.argsort(-scores[candidates], kind="stable")[:k]]
+        # A chunk is a match if it contains a query term. Filtering on the score
+        # instead would drop real matches: when a term appears in most of a small
+        # corpus, BM25 gives it a negative or floored weight.
+        wanted = set(tokens)
+        matched = np.array(
+            [i for i in candidates if wanted & self._bm25.doc_freqs[i].keys()], dtype=int
+        )
+        if matched.size == 0:
+            return []
+
+        scores = np.asarray(self._bm25.get_scores(tokens), dtype=np.float32)
         return [
-            RetrievedChunk(chunk=self.chunks[int(i)], score=round(float(scores[i]), 6))
-            for i in best
+            RetrievedChunk(chunk=self.chunks[i], score=round(float(scores[i]), 6))
+            for i in self._ranked(scores, matched, top_k)
         ]
 
 

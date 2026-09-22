@@ -66,6 +66,21 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_by_conversation ON messages(conversation_id, id);
 
+CREATE TABLE IF NOT EXISTS queries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    at         TEXT NOT NULL,
+    question   TEXT NOT NULL,
+    doc_id     TEXT,
+    rewritten  TEXT,
+    retrieved  INTEGER,
+    evidence   INTEGER,
+    top_score  REAL,
+    answerable INTEGER,
+    citations  INTEGER,
+    guards     TEXT,
+    latency_ms INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS eval_runs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     label       TEXT,

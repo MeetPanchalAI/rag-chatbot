@@ -39,6 +39,8 @@ One page at `/`:
 - **Show what was retrieved** puts every retrieved chunk, its score and whether
   it became evidence under the reply.
 - **Run the evaluation**, label it with what you changed, and open any past run.
+- **Activity** counts the last 500 questions: answered against refused, median
+  latency, median retrieval score, and which guards fired.
 
 It is one HTML file with no build step and no dependencies. The brief asks for a
 lightweight UI, so this is a test harness with a clean face.
@@ -53,6 +55,7 @@ lightweight UI, so this is a test harness with a clean face.
 | `POST /ingest` | Upload a PDF |
 | `DELETE /documents/{id}` | Remove a document, its chunks and its stored PDF |
 | `POST /chat` | Ask a question |
+| `GET /activity` | Dashboard counts and recent questions |
 | `GET`/`POST /conversations` | List, or start one |
 | `GET`/`DELETE /conversations/{id}` | Read one back, or remove it |
 | `POST /eval/run` | Start an evaluation |
@@ -94,7 +97,7 @@ retrieved, and for follow-ups either `history` (nothing is stored) or
 pytest
 ```
 
-130 tests, all offline. The embedding model and the LLM are replaced by fakes and
+154 tests, all offline. The embedding model and the LLM are replaced by fakes and
 test PDFs are generated in memory, so no key and no network are needed.
 
 ## Evaluation
@@ -130,11 +133,15 @@ Everything comes from the environment; see `.env.example`. No secrets in code.
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embeds chunks and queries |
 | `REWRITE_MODEL` | same as `LLM_MODEL` | Rewrites follow-up questions |
 | `JUDGE_MODEL` | same as `LLM_MODEL` | Grades answers during evaluation |
+| `RERANK_MODEL` | same as `LLM_MODEL` | Reorders retrieved candidates |
 | `LLM_TEMPERATURE` | `1.0` | gpt-5.6-luna is a reasoning model and takes only its default |
 | `JUDGE_TEMPERATURE` | same as `LLM_TEMPERATURE` | Temperature for the judge |
 | `LLM_REASONING_EFFORT` | `low` | Blank omits the parameter entirely |
 | `CHUNK_TOKENS` | `500` | Target chunk size |
 | `RETRIEVER_TOP_K` | `6` | Chunks retrieved per question |
+| `HYBRID_SEARCH` | `true` | Fuse BM25 keyword search with the dense search |
+| `RERANK` | `false` | Let the model reorder candidates. One extra call per question |
+| `RERANK_CANDIDATES` | `20` | How many candidates the reranker sees |
 | `MAX_CONTEXT_TOKENS` | `4000` | Ceiling on evidence sent to the model |
 
 Works with any OpenAI-compatible endpoint via `OPENAI_BASE_URL`.

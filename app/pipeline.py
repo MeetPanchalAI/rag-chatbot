@@ -12,6 +12,7 @@ import uuid
 from app.config import Settings
 from app.generation import generate_answer
 from app.providers import Embedder, LLM
+from app.rerank import rerank
 from app.retrieval import build_evidence, page_label, retrieve, rewrite_query
 from app.schemas import (
     ChatRequest,
@@ -83,6 +84,8 @@ def answer_question(
     llm: LLM,
     rewrite_llm: LLM,
     settings: Settings,
+    rerank_llm: LLM | None = None,
+    record=None,
 ) -> ChatResponse:
     started = time.perf_counter()
     request_id = uuid.uuid4().hex[:12]
@@ -93,9 +96,19 @@ def answer_question(
     query, was_rewritten = rewrite_query(
         rewrite_llm, request.question, request.history, settings.max_history_turns
     )
+    # With reranking on we fetch a wider pool and let the model narrow it.
+    wanted = settings.rerank_candidates if settings.rerank else settings.retriever_top_k
     retrieved = retrieve(
-        store, embedder, query, settings.retriever_top_k, request.doc_id
+        store, embedder, query, wanted, request.doc_id,
+        hybrid=settings.hybrid_search, rrf_k=settings.rrf_k,
     )
+
+    rerank_guards: list[str] = []
+    if settings.rerank and retrieved:
+        retrieved, rerank_guards = rerank(
+            rerank_llm or llm, query, retrieved, settings.retriever_top_k
+        )
+
     evidence, used = build_evidence(retrieved, settings.max_context_tokens)
 
     result = generate_answer(
@@ -106,6 +119,7 @@ def answer_question(
         len(used),
         settings.max_history_turns,
     )
+    guards = result.guards + rerank_guards
 
     include_document = request.doc_id is None and len(store.documents) > 1
     citations = _dedupe(
@@ -113,26 +127,27 @@ def answer_question(
     )
 
     top_score = retrieved[0].score if retrieved else None
-    log.info(
-        json.dumps(
-            {
-                "request_id": request_id,
-                "doc_id": request.doc_id,
-                "question": request.question[:200],
-                "rewritten_query": query if was_rewritten else None,
-                "retrieved": len(retrieved),
-                "evidence": len(used),
-                # Logged on every request so the evaluation run can compare score
-                # distributions for answerable and unanswerable questions, and
-                # show whether a relevance threshold would help. See DESIGN.md.
-                "top_score": top_score,
-                "answerable": result.answerable,
-                "citations": len(citations),
-                "guards": result.guards,
-                "latency_ms": round((time.perf_counter() - started) * 1000),
-            }
-        )
-    )
+    entry = {
+        "request_id": request_id,
+        "doc_id": request.doc_id,
+        "question": request.question[:200],
+        "rewritten_query": query if was_rewritten else None,
+        "retrieved": len(retrieved),
+        "evidence": len(used),
+        # Recorded on every request so the evaluation can compare score
+        # distributions for answerable and unanswerable questions, and so the
+        # dashboard can show what the system has been doing. See DESIGN.md.
+        "top_score": top_score,
+        "answerable": result.answerable,
+        "citations": len(citations),
+        "guards": guards,
+        "latency_ms": round((time.perf_counter() - started) * 1000),
+    }
+    log.info(json.dumps(entry))
+    # The API stores this; the evaluation passes nothing, so a run does not fill
+    # the dashboard with questions nobody asked.
+    if record:
+        record(entry)
 
     trace = None
     if request.debug:
@@ -143,7 +158,7 @@ def answer_question(
             top_score=top_score,
             evidence=evidence or None,
             raw_model_output=result.raw_output or None,
-            guards=result.guards,
+            guards=guards,
         )
 
     return ChatResponse(

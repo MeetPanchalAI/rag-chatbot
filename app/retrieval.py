@@ -1,6 +1,7 @@
-"""Query rewriting, dense retrieval, and evidence assembly."""
+"""Query rewriting, retrieval, and evidence assembly."""
 
 import logging
+from collections import defaultdict
 
 from app.providers import Embedder, LLM
 from app.schemas import Chunk, Message, RetrievedChunk
@@ -50,17 +51,57 @@ def rewrite_query(
     return rewritten, rewritten.lower() != question.strip().lower()
 
 
+def fuse(
+    rankings: list[list[RetrievedChunk]], rrf_k: int, top_k: int
+) -> list[RetrievedChunk]:
+    """Reciprocal rank fusion.
+
+    Each list contributes 1/(rrf_k + rank) to a chunk's score. Fusing on *rank*
+    rather than score is the point: a cosine similarity and a BM25 score are not
+    on the same scale and cannot be added, but their orderings can be combined.
+    """
+    totals: dict[str, float] = defaultdict(float)
+    items: dict[str, RetrievedChunk] = {}
+    for ranking in rankings:
+        for rank, item in enumerate(ranking, start=1):
+            totals[item.chunk.chunk_id] += 1.0 / (rrf_k + rank)
+            items.setdefault(item.chunk.chunk_id, item)
+
+    best = sorted(totals, key=lambda chunk_id: -totals[chunk_id])[:top_k]
+    return [
+        RetrievedChunk(chunk=items[chunk_id].chunk, score=round(totals[chunk_id], 6))
+        for chunk_id in best
+    ]
+
+
 def retrieve(
     store: VectorStore,
     embedder: Embedder,
     query: str,
     top_k: int,
     doc_id: str | None = None,
+    hybrid: bool = False,
+    rrf_k: int = 60,
 ) -> list[RetrievedChunk]:
+    """Dense search, optionally fused with BM25 keyword search.
+
+    Dense search handles paraphrase; keyword search catches the exact terms
+    embeddings blur together. Neither is reliably better, so hybrid takes both.
+    """
     vectors = embedder.embed([query])
     if not vectors:
         return []
-    return store.search(vectors[0], top_k=top_k, doc_id=doc_id)
+
+    if not hybrid:
+        return store.search(vectors[0], top_k=top_k, doc_id=doc_id)
+
+    # Each ranker offers more than we need, so fusion has something to work with.
+    pool = max(top_k * 3, 30)
+    dense = store.search(vectors[0], top_k=pool, doc_id=doc_id)
+    keyword = store.keyword_search(query, top_k=pool, doc_id=doc_id)
+    if not keyword:
+        return dense[:top_k]
+    return fuse([dense, keyword], rrf_k=rrf_k, top_k=top_k)
 
 
 def build_evidence(

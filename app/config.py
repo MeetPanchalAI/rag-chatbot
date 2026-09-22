@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-5.6-luna"
     rewrite_model: str = ""
     judge_model: str = ""
+    rerank_model: str = ""
     embedding_model: str = "text-embedding-3-small"
     llm_temperature: float = 1.0
     # Blank falls back to LLM_TEMPERATURE.
@@ -37,6 +38,12 @@ class Settings(BaseSettings):
     # Retrieval
     retriever_top_k: int = 6
     max_context_tokens: int = 4000
+    # Keyword search fused with the dense search. Costs no extra API call.
+    hybrid_search: bool = True
+    rrf_k: int = 60
+    # Reranking costs one model call per question, so it is opt-in.
+    rerank: bool = False
+    rerank_candidates: int = 20
 
     # Limits
     max_history_turns: int = 3
@@ -55,6 +62,10 @@ class Settings(BaseSettings):
     @property
     def judge_model_name(self) -> str:
         return self.judge_model or self.llm_model
+
+    @property
+    def rerank_model_name(self) -> str:
+        return self.rerank_model or self.llm_model
 
     @property
     def judge_temperature_value(self) -> float:

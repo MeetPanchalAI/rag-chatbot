@@ -97,9 +97,16 @@ python -m eval.run_eval --no-judge      # retrieval metrics only, no judge calls
 ```
 
 Each run is stored with the settings that produced it — models, chunk size,
-overlap, top-k, context budget, reasoning effort — so two runs can be compared
-and the difference attributed rather than guessed at. Reports are written to
-`eval/results.md` and `eval/results.jsonl`.
+overlap, top-k, context budget, reasoning effort, and whether hybrid search and
+reranking were on — so two runs can be compared and the difference attributed
+rather than guessed at.
+
+To measure hybrid search or reranking, run once with each off, then again with
+one on, and label the runs. One caveat: with hybrid search on, the retrieval
+score is a fusion score rather than a cosine similarity, so `top_score` is
+comparable within a retrieval mode but not across modes. Every other metric is.
+
+Reports are written to `eval/results.md` and `eval/results.jsonl`.
 
 Cost is one or two model calls per question, plus one judge call.
 

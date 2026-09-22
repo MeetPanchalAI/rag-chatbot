@@ -13,6 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
+from app import activity
 from app import conversations as convo
 from app import eval_runs
 from app.config import Settings, get_settings
@@ -34,6 +35,7 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     Conversation,
+    Activity,
     DocumentInfo,
     EvalRequest,
     EvalRunInfo,
@@ -58,6 +60,7 @@ class Providers:
         self._llm: LLM | None = None
         self._rewrite_llm: LLM | None = None
         self._judge_llm: LLM | None = None
+        self._rerank_llm: LLM | None = None
 
     @property
     def embedder(self) -> Embedder:
@@ -78,6 +81,14 @@ class Providers:
                 self._settings, model=self._settings.rewrite_model_name
             )
         return self._rewrite_llm
+
+    @property
+    def rerank_llm(self) -> LLM:
+        if self._rerank_llm is None:
+            self._rerank_llm = OpenAILLM(
+                self._settings, model=self._settings.rerank_model_name
+            )
+        return self._rerank_llm
 
     @property
     def judge_llm(self) -> LLM:
@@ -224,6 +235,8 @@ def create_app(
             app.state.providers.llm,
             app.state.providers.rewrite_llm,
             settings,
+            rerank_llm=getattr(app.state.providers, "rerank_llm", None),
+            record=lambda row: activity.record(db, row),
         )
 
         if request.conversation_id:
@@ -234,6 +247,10 @@ def create_app(
                 trace=response.trace,
             )
         return response
+
+    @app.get("/activity", response_model=Activity)
+    def recent_activity(limit: int = 25) -> Activity:
+        return activity.overview(db, limit=max(1, min(limit, 200)))
 
     # --- evaluation ---
 

@@ -227,7 +227,8 @@ details.tr td.n { font-variant-numeric: tabular-nums; color: var(--muted); }
 
 /* ---------- evaluation ---------- */
 
-#evalPane { overflow-y: auto; padding: 24px 20px 40px; }
+#evalPane, #activityPane { overflow-y: auto; padding: 24px 20px 40px; }
+.q { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet { max-width: 880px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 16px; }
 .card > h3 { font-size: 14px; }
@@ -324,6 +325,7 @@ ul.fails li { margin-bottom: 4px; }
     <div class="tabs">
       <button class="tab on" data-tab="chat">Chat</button>
       <button class="tab" data-tab="eval">Evaluation</button>
+      <button class="tab" data-tab="activity">Activity</button>
     </div>
 
     <div class="pane on" id="chatPane">
@@ -336,6 +338,12 @@ ul.fails li { margin-bottom: 4px; }
           </button>
         </div>
       </form>
+    </div>
+
+    <div class="pane" id="activityPane">
+      <div class="sheet">
+        <div id="activityOut"></div>
+      </div>
     </div>
 
     <div class="pane" id="evalPane">
@@ -847,6 +855,87 @@ function scoreCell(v) {
   return td;
 }
 
+/* ---------- activity ----------
+   What the system has actually been doing: the same record that goes to the
+   log, kept so it can be counted rather than only tailed. */
+
+async function drawActivity() {
+  const out = $('activityOut');
+  let data;
+  try { data = await api('/activity'); }
+  catch (e) { out.innerHTML = ''; out.append(el('p', 'say err', e.message)); return; }
+
+  out.innerHTML = '';
+  const s = data.stats;
+  if (!s.questions) {
+    const card = el('div', 'card');
+    card.append(el('h3', null, 'No questions yet'));
+    card.append(el('p', 'sub', 'Ask something in the Chat tab and it will show up here.'));
+    out.append(card);
+    return;
+  }
+
+  const tiles = [
+    { label: 'Questions', value: String(s.questions), note: 'most recent 500' },
+    { label: 'Answered', value: pct(s.answered_share), note: `${s.refused} refused` },
+    { label: 'Median latency', value: Math.round(s.median_latency_ms) + ' ms', note: 'end to end' },
+    { label: 'Median top score', value: s.median_top_score === null ? '—' : s.median_top_score.toFixed(3),
+      note: 'best retrieved chunk' },
+  ];
+  const row = el('div', 'kpis');
+  for (const t of tiles) {
+    const card = el('div', 'kpi');
+    card.append(el('div', 'lbl', t.label), el('div', 'val', t.value), el('div', 'met', t.note));
+    row.append(card);
+  }
+  out.append(row);
+
+  const guards = Object.entries(s.guards || {});
+  if (guards.length) {
+    const card = el('div', 'card');
+    card.append(el('h3', null, 'Guards fired'));
+    const table = el('table', 'grid');
+    for (const [name, count] of guards) {
+      const tr = el('tr');
+      tr.append(el('td', null, name.replace(/_/g, ' ')), el('td', 'num', String(count)));
+      table.append(tr);
+    }
+    card.append(table);
+    out.append(card);
+  }
+
+  const card = el('div', 'card');
+  card.append(el('h3', null, 'Recent questions'));
+  const table = el('table', 'grid');
+  const head = el('tr');
+  for (const c of ['When', 'Question', 'Outcome', 'Score', 'Cites', 'Latency']) {
+    head.append(el('th', null, c));
+  }
+  table.append(head);
+
+  for (const r of data.recent) {
+    const tr = el('tr');
+    tr.append(el('td', 'num', (r.at || '').replace('T', ' ').replace('+00:00', '').slice(5)));
+    tr.append(el('td', 'q', r.question));
+    const got = el('td');
+    got.append(el('span', 'pill ' + (r.answerable ? 'ok' : ''), r.answerable ? 'answered' : 'refused'));
+    tr.append(got);
+    tr.append(el('td', 'num', r.top_score === null ? '—' : r.top_score.toFixed(3)));
+    tr.append(el('td', 'num', String(r.citations)));
+    tr.append(el('td', 'num', r.latency_ms + ' ms'));
+    tr.title = [r.question, r.rewritten && 'Rewritten: ' + r.rewritten,
+                r.guards.length && 'Guards: ' + r.guards.join(', ')].filter(Boolean).join('
+
+');
+    table.append(tr);
+  }
+  const scroll = el('div', 'scroll');
+  scroll.append(table);
+  card.append(scroll);
+  card.append(el('p', 'foot', 'Retrieval scores are only comparable within one retrieval mode.'));
+  out.append(card);
+}
+
 /* ---------- run history ----------
    Tuning a RAG system is comparing this run with the one before it, so every
    run is kept together with the settings that produced it. */
@@ -913,6 +1002,8 @@ for (const tab of document.querySelectorAll('.tab')) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
     $('chatPane').classList.toggle('on', tab.dataset.tab === 'chat');
     $('evalPane').classList.toggle('on', tab.dataset.tab === 'eval');
+    $('activityPane').classList.toggle('on', tab.dataset.tab === 'activity');
+    if (tab.dataset.tab === 'activity') drawActivity();
   };
 }
 
