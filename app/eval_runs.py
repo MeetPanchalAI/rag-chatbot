@@ -66,15 +66,15 @@ def finish(db: Database, run_id: int, rows: list[dict], summary: dict, headline:
             connection.execute(
                 "INSERT INTO eval_results (run_id, question_id, doc, type, question, "
                 "should_be_answerable, answerable, answer, expected_answer, citations, "
-                "top_score, recall, cited_gold, unsupported, correctness, groundedness, "
+                "top_score, recall, unsupported, correctness, groundedness, "
                 "citation_support, completeness, judge_reason, guards) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     run_id, row["id"], row.get("doc"), row["type"], row["question"],
                     int(row["should_be_answerable"]), int(row["answerable"]),
                     row["answer"], row.get("expected_answer"),
                     json.dumps(row["citations"]), row["top_score"],
-                    row["recall"], row.get("cited_gold"), int(bool(row.get("unsupported"))),
+                    row["recall"], int(bool(row.get("unsupported"))),
                     row.get("correctness"), row.get("groundedness"),
                     row.get("citation_support"), row.get("completeness"),
                     row.get("judge_reason"), json.dumps(row["guards"]),
@@ -132,14 +132,6 @@ def delete(db: Database, run_id: int) -> None:
         connection.execute("DELETE FROM eval_runs WHERE id = ?", (run_id,))
 
 
-def _tri(value) -> int | None:
-    return None if value is None else int(value)
-
-
-def _bool(value) -> bool | None:
-    return None if value is None else bool(value)
-
-
 def _info(row) -> EvalRunInfo:
     return EvalRunInfo(
         run_id=row["id"],
@@ -170,7 +162,6 @@ def _result(row) -> dict:
         "citations": loads(row["citations"], []),
         "top_score": row["top_score"],
         "recall": row["recall"],
-        "cited_gold": row["cited_gold"],
         "unsupported": bool(row["unsupported"]),
         "correctness": row["correctness"],
         "groundedness": row["groundedness"],

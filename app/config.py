@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     judge_model: str = ""
     embedding_model: str = "text-embedding-3-small"
     llm_temperature: float = 1.0
+    # Blank falls back to LLM_TEMPERATURE.
+    judge_temperature: float | None = None
     llm_reasoning_effort: str = "low"
 
     # Storage
@@ -53,6 +55,10 @@ class Settings(BaseSettings):
     @property
     def judge_model_name(self) -> str:
         return self.judge_model or self.llm_model
+
+    @property
+    def judge_temperature_value(self) -> float:
+        return self.llm_temperature if self.judge_temperature is None else self.judge_temperature
 
 
 @lru_cache

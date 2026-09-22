@@ -83,7 +83,9 @@ class Providers:
     def judge_llm(self) -> LLM:
         if self._judge_llm is None:
             self._judge_llm = OpenAILLM(
-                self._settings, model=self._settings.judge_model_name
+                self._settings,
+                model=self._settings.judge_model_name,
+                temperature=self._settings.judge_temperature_value,
             )
         return self._judge_llm
 

@@ -22,8 +22,6 @@
   --amber-bg:  #fdf6ec;
   --good:      #067647;
   --bad:       #b42318;
-  --series-1:  #2a78d6;
-  --series-2:  #eb6834;
   --meter-track:#cde2fb;
   --meter-fill: #2a78d6;
   --r:  10px;
@@ -48,8 +46,6 @@
     --amber-bg:  #241d12;
     --good:      #4ade80;
     --bad:       #f97066;
-    --series-1:  #3987e5;
-    --series-2:  #d95926;
     --meter-track:#1c5cab;
     --meter-fill: #3987e5;
     --shadow: none;
@@ -346,10 +342,7 @@ ul.fails li { margin-bottom: 4px; }
       <div class="sheet">
         <div class="card">
           <h3>Evaluation set</h3>
-          <p class="sub">
-            Every question runs through the same path a real request takes. One or two
-            model calls each, so expect it to take about a minute.
-          </p>
+          <p class="sub">20 questions through the same path a real request takes. About a minute.</p>
           <div class="actions">
             <input id="label" placeholder="What changed? (optional label)" maxlength="120">
             <button class="primary" id="run">Run evaluation</button>
@@ -756,8 +749,7 @@ function kpiRow(tiles) {
     fill.style.width = Math.round((t.value || 0) * 100) + '%';
     meter.append(fill);
     card.append(meter);
-    card.append(el('div', 'met', t.metric));
-    card.append(el('div', 'det', t.detail));
+    card.append(el('div', 'met', t.note));
     row.append(card);
   }
   return row;
@@ -768,7 +760,6 @@ function kpiRow(tiles) {
 function byCategory(groups) {
   const card = el('div', 'card');
   card.append(el('h3', null, 'By category'));
-  card.append(el('p', 'sub', 'The five metrics again, split by what each question is testing.'));
 
   const table = el('table', 'data');
   const head = el('tr');
@@ -798,7 +789,7 @@ function perQuestion(rows) {
 
   const table = el('table', 'grid');
   const head = el('tr');
-  for (const c of ['ID', 'Doc', 'Type', 'Expected', 'Result', 'Recall', 'Corr', 'Grnd', 'Cite', 'Sources']) {
+  for (const c of ['ID', 'Type', 'Outcome', 'Recall', 'Corr', 'Grnd', 'Cite']) {
     head.append(el('th', null, c));
   }
   table.append(head);
@@ -843,7 +834,7 @@ function perQuestion(rows) {
     }
     card.append(list);
   }
-  card.append(el('p', 'foot', 'Hover a row to read the answer. The full report is written to eval/results.md.'));
+  card.append(el('p', 'foot', 'Hover a row for the question, answer, sources and the judge’s reason.'));
   return card;
 }
 
@@ -869,7 +860,6 @@ async function drawHistory() {
 
   const card = el('div', 'card');
   card.append(el('h3', null, `Previous runs (${runs.length})`));
-  card.append(el('p', 'sub', 'Click one to read it back. Each keeps the settings it ran under.'));
 
   for (const r of runs) {
     const row = el('div', 'runrow');

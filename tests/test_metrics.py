@@ -66,7 +66,7 @@ def test_answering_an_unanswerable_question_lowers_abstention():
     result = metrics([row(), leaked])
 
     assert result["abstention"] == 0.0
-    assert "1 of 1 unanswerable questions were answered anyway" in tiles([row(), leaked])["Abstention"]["detail"]
+    assert tiles([row(), leaked])["Abstention"]["note"] == "1 of 1 answered anyway"
 
 
 def test_an_unjudged_run_reports_retrieval_and_abstention_only():

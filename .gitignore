@@ -10,6 +10,5 @@ data/
 *.pdf
 !corpus/*.pdf
 
-# Run artifacts. A real report can be committed deliberately.
-eval/results.md
+# Raw per-question output of the last run. The report itself is committed.
 eval/results.jsonl

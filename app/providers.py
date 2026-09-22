@@ -87,10 +87,12 @@ class OpenAIEmbedder:
 
 
 class OpenAILLM:
-    def __init__(self, settings: Settings, model: str | None = None):
+    def __init__(
+        self, settings: Settings, model: str | None = None, temperature: float | None = None
+    ):
         self._client = _client(settings)
         self._model = model or settings.llm_model
-        self._temperature = settings.llm_temperature
+        self._temperature = settings.llm_temperature if temperature is None else temperature
         self._reasoning_effort = settings.llm_reasoning_effort.strip()
 
     def complete(self, system: str, user: str, json_mode: bool = False) -> str:

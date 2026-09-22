@@ -181,7 +181,6 @@ class EvalStatus(BaseModel):
     knobs: dict[str, str] = Field(default_factory=dict)
     summary: dict[str, str] | None = None
     headline: list[dict] = Field(default_factory=list)
-    distribution: list[str] = Field(default_factory=list)
     ranges: list[dict] = Field(default_factory=list)
     breakdown: list[dict] = Field(default_factory=list)
     rows: list[dict] = Field(default_factory=list)

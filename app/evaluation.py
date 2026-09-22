@@ -98,13 +98,6 @@ def covered_pages(response: ChatResponse) -> set[int]:
     return pages
 
 
-def cited_pages(response: ChatResponse) -> set[int]:
-    pages: set[int] = set()
-    for citation in response.citations:
-        pages.update(range(citation.page_start, citation.page_end + 1))
-    return pages
-
-
 def score(question: dict, response: ChatResponse, verdict: JudgeResult) -> dict:
     """Score one question.
 
@@ -114,7 +107,6 @@ def score(question: dict, response: ChatResponse, verdict: JudgeResult) -> dict:
     """
     gold = set(question.get("gold_pages") or [])
     retrieved = covered_pages(response)
-    cited = cited_pages(response)
     should_answer = bool(question.get("answerable", True))
 
     row = {
@@ -130,7 +122,6 @@ def score(question: dict, response: ChatResponse, verdict: JudgeResult) -> dict:
         "top_score": response.trace.top_score if response.trace else None,
         "guards": response.trace.guards if response.trace else [],
         "recall": (len(gold & retrieved) / len(gold)) if gold else None,
-        "cited_gold": (len(cited & gold) / len(cited)) if cited and gold else None,
         # An unanswerable question answered anyway is the failure that matters.
         "unsupported": (not should_answer) and response.answerable,
         "judge_reason": verdict.reason,
@@ -228,11 +219,11 @@ def breakdown(rows: list[dict]) -> list[dict]:
 
 
 LABELS = {
-    "retrieval": ("Retrieval", "share of gold pages retrieved"),
-    "correctness": ("Correctness", "the answer agrees with the reference"),
-    "groundedness": ("Groundedness", "every claim is supported by the evidence"),
+    "retrieval": ("Retrieval", "share of gold pages found"),
+    "correctness": ("Correctness", "agrees with the reference answer"),
+    "groundedness": ("Groundedness", "supported by the evidence shown"),
     "citation_support": ("Citation support", "the cited page holds the claim"),
-    "abstention": ("Abstention", "refused when the document could not answer"),
+    "abstention": ("Abstention", "refused when it could not answer"),
 }
 
 
@@ -240,27 +231,14 @@ def headline(rows: list[dict]) -> list[dict]:
     """The five metrics as tiles, all phrased so higher is better."""
     values = metrics(rows)
     unanswerable = [r for r in rows if not r["should_be_answerable"]]
-    unsupported = sum(1 for r in unanswerable if r["unsupported"])
-    judged = sum(1 for r in rows if r.get("correctness") is not None)
+    leaked = sum(1 for r in unanswerable if r["unsupported"])
 
-    details = {
-        "retrieval": "over {} answerable questions".format(
-            sum(1 for r in rows if r["should_be_answerable"])
-        ),
-        "correctness": "judged on {} of {} questions".format(judged, len(rows)),
-        "groundedness": "right for the wrong reason still scores low",
-        "citation_support": "judged on answerable questions only",
-        "abstention": "{} of {} unanswerable questions were answered anyway".format(
-            unsupported, len(unanswerable)
-        ),
-    }
+    notes = dict((key, text) for key, (_, text) in LABELS.items())
+    if unanswerable:
+        notes["abstention"] = "{} of {} answered anyway".format(leaked, len(unanswerable))
+
     return [
-        {
-            "label": LABELS[key][0],
-            "metric": LABELS[key][1],
-            "value": values[key],
-            "detail": details[key],
-        }
+        {"label": LABELS[key][0], "value": values[key], "note": notes[key]}
         for key in LABELS
     ]
 

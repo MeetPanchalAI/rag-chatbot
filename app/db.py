@@ -93,10 +93,7 @@ CREATE TABLE IF NOT EXISTS eval_results (
     answer               TEXT,
     citations            TEXT,
     top_score            REAL,
-    recall               INTEGER,
-    coverage             INTEGER,
-    citation_precision   REAL,
-    keywords_found       INTEGER,
+    recall               REAL,
     guards               TEXT
 );
 CREATE INDEX IF NOT EXISTS results_by_run ON eval_results(run_id);
@@ -161,7 +158,6 @@ ADDED_COLUMNS = {
     "eval_results": {
         "doc": "TEXT",
         "expected_answer": "TEXT",
-        "cited_gold": "REAL",
         "unsupported": "INTEGER",
         "correctness": "INTEGER",
         "groundedness": "INTEGER",
