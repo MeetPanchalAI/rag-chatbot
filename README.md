@@ -18,8 +18,8 @@ cp .env.example .env             # then put your API key in it
 ## Run
 
 ```bash
-# 1. Index a PDF (use this for large files rather than the endpoint)
-python -m app.ingest_cli path/to/document.pdf
+# 1. Index the evaluation corpus (or any PDF of your own)
+python -m app.ingest_cli corpus/free221.pdf corpus/Lecture10.pdf
 
 # 2. Start the API
 uvicorn app.main:app --reload
@@ -130,8 +130,9 @@ no network call.
 
 ## Evaluation
 
-25 questions over two documents, five in each of the five behaviours the brief
-names. Five metrics per run, also broken down by category:
+20 questions over the two PDFs in [`corpus/`](corpus/), four in each of the five
+behaviours the brief names. Five metrics per run, reported overall and by
+category:
 
 | Metric | Answers |
 | --- | --- |
@@ -146,10 +147,10 @@ python -m eval.run_eval                 # or use the Evaluation tab
 python -m eval.run_eval --no-judge      # retrieval metrics only, no judge calls
 ```
 
-Writes `eval/results.md` and `eval/results.jsonl`, and stores the run with the
-settings that produced it so two runs can be compared.
+Each run is stored with the settings that produced it, so two runs can be
+compared. Reports land in `eval/results.md` and `eval/results.jsonl`.
 
-Methodology, and why each metric is measured the way it is: **[EVAL.md](EVAL.md)**.
+Methodology and limits: **[EVAL.md](EVAL.md)**.
 
 ## Configuration
 

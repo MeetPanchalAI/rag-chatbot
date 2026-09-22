@@ -63,7 +63,7 @@ class JudgeResult:
 EMPTY = JudgeResult(scores={name: None for name in SCORES})
 
 
-def _prompt(question, history, expected, answer, evidence, citations) -> str:
+def _prompt(question, history, expected, answer, evidence, citations, points) -> str:
     parts = []
     if history:
         parts.append(
@@ -72,6 +72,10 @@ def _prompt(question, history, expected, answer, evidence, citations) -> str:
         )
     parts.append("Question:\n" + question)
     parts.append("Reference answer:\n" + expected)
+    if points:
+        # The specific things a full answer must contain. Grading against these
+        # is steadier between runs than grading against prose alone.
+        parts.append("A full answer covers:\n" + "\n".join("- " + p for p in points))
     parts.append("Evidence the system retrieved:\n" + (evidence or "(nothing was retrieved)"))
     parts.append("The system replied:\n" + answer)
     parts.append("It cited:\n" + ("; ".join(citations) if citations else "(no citation)"))
@@ -86,9 +90,10 @@ def judge_answer(
     answer: str,
     evidence: str,
     citations: list[str],
+    points: list[str] | None = None,
 ) -> JudgeResult:
     """Score one answer. A judge that misbehaves yields no score, never a guess."""
-    prompt = _prompt(question, history, expected, answer, evidence, citations)
+    prompt = _prompt(question, history, expected, answer, evidence, citations, points or [])
     try:
         raw = llm.complete(SYSTEM, prompt, json_mode=True)
     except Exception as exc:

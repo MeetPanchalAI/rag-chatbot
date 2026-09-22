@@ -139,6 +139,7 @@ def run_evaluation(
                 response.answer,
                 (response.trace.evidence if response.trace else "") or "",
                 [c.display for c in response.citations],
+                question.get("expected_points") or [],
             )
 
         rows.append(score(question, response, verdict))

@@ -32,8 +32,8 @@ def rows() -> list[dict]:
 def test_the_set_covers_every_category_evenly(rows):
     counts = {name: sum(1 for r in rows if r["type"] == name) for name in REQUIRED_TYPES}
 
-    assert len(rows) == 25
-    assert set(counts.values()) == {5}, "five questions in each category"
+    assert 15 <= len(rows) <= 20, "the brief asks for roughly 15 to 20"
+    assert len(set(counts.values())) == 1, "the same number in each category"
 
 
 def test_every_category_is_covered(rows):
@@ -70,6 +70,13 @@ def test_every_question_names_the_document_it_belongs_to(rows):
 def test_every_question_carries_a_reference_answer(rows):
     for row in rows:
         assert row["expected_answer"].strip(), "{} has nothing to judge against".format(row["id"])
+
+
+def test_every_question_lists_the_points_a_full_answer_covers(rows):
+    # The judge grades against these as well as the prose, which keeps scoring
+    # steadier between runs.
+    for row in rows:
+        assert row["expected_points"], "{} lists no expected points".format(row["id"])
 
 
 def test_the_unanswerable_questions_are_split_across_both_documents(rows):

@@ -218,8 +218,8 @@ line and the UI run exactly the same code.
 
 ## Evaluation
 
-25 questions over two documents, scored on five metrics and broken down by
-category. Retrieval is scored arithmetically against gold pages; the answer is
+20 questions over the two PDFs in `corpus/`, scored on five metrics and broken
+down by category. Retrieval is scored arithmetically against gold pages; the answer is
 scored by an LLM judge on four separate axes, never blended into one number.
 Every run is stored with the settings that produced it.
 

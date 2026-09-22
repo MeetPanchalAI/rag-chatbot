@@ -5,4 +5,11 @@ __pycache__/
 *.egg-info/
 .env
 data/
+
+# PDFs are not committed, except the evaluation corpus.
 *.pdf
+!corpus/*.pdf
+
+# Run artifacts. A real report can be committed deliberately.
+eval/results.md
+eval/results.jsonl
