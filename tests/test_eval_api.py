@@ -203,3 +203,45 @@ def test_the_ui_script_calls_no_function_it_does_not_define(settings, store):
 
     missing = called - defined - language - builtins - css
     assert not missing, "the page calls undefined functions: {}".format(sorted(missing))
+
+
+def test_no_string_literal_in_the_page_script_is_broken_across_a_line(settings, store):
+    """A quoted string split across lines is a syntax error, and a syntax error
+    kills the whole script: no fetches run, and every panel renders empty while
+    the server looks healthy. Checking ids and tags cannot catch it."""
+    providers = FakeProviders(FakeEmbedder())
+    with TestClient(create_app(settings, store, providers)) as client:
+        script = client.get("/").text.split("<script>")[1].split("</script>")[0]
+
+    quote, line, index = None, 1, 0
+    while index < len(script):
+        char = script[index]
+        if quote is None:
+            if char == "\n":
+                line += 1
+            elif char in "'\"`":
+                quote = char
+            elif char == "/" and script[index + 1 : index + 2] == "/":
+                while index < len(script) and script[index] != "\n":
+                    index += 1
+                continue
+            elif char == "/" and script[index + 1 : index + 2] == "*":
+                end = script.find("*/", index)
+                line += script.count("\n", index, end if end != -1 else len(script))
+                index = end + 2 if end != -1 else len(script)
+                continue
+        else:
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            elif char == "\n":
+                # Backticks may span lines; ' and " may not.
+                assert quote == "`", (
+                    "unterminated {} string at script line {}".format(quote, line)
+                )
+                line += 1
+        index += 1
+
+    assert quote is None, "a string literal is left open at the end of the script"

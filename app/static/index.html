@@ -924,9 +924,7 @@ async function drawActivity() {
     tr.append(el('td', 'num', String(r.citations)));
     tr.append(el('td', 'num', r.latency_ms + ' ms'));
     tr.title = [r.question, r.rewritten && 'Rewritten: ' + r.rewritten,
-                r.guards.length && 'Guards: ' + r.guards.join(', ')].filter(Boolean).join('
-
-');
+                r.guards.length && 'Guards: ' + r.guards.join(', ')].filter(Boolean).join('\n\n');
     table.append(tr);
   }
   const scroll = el('div', 'scroll');
