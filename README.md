@@ -97,7 +97,7 @@ retrieved, and for follow-ups either `history` (nothing is stored) or
 pytest
 ```
 
-154 tests, all offline. The embedding model and the LLM are replaced by fakes and
+155 tests, all offline. The embedding model and the LLM are replaced by fakes and
 test PDFs are generated in memory, so no key and no network are needed.
 
 ## Evaluation

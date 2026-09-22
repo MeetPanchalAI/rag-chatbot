@@ -200,23 +200,37 @@ is stored with the settings that produced it, so two runs can be compared.
 Method and limits: **[EVAL.md](EVAL.md)**. Latest numbers:
 **[eval/results.md](eval/results.md)**.
 
-## What the first real run showed
+## What the runs show
 
-| Metric | Score |
-| --- | --- |
-| Retrieval | 84% |
-| Correctness | 85% |
-| Groundedness | 88% |
-| Citation support | 88% |
-| Abstention | 75% |
+Dense-only against dense + BM25, same corpus, same questions, everything else
+unchanged:
 
-Multi-passage questions are the weak spot: 75% retrieval, 62% correctness, 50%
-citation support. The system finds one of the two passages an answer needs and
-answers from it. That is the first thing hybrid search or a larger top-k should
-be measured against.
+| Metric | Dense | Hybrid |
+| --- | --- | --- |
+| Retrieval | 84% | 84% |
+| Correctness | 85% | 90% |
+| Groundedness | 88% | 92% |
+| Citation support | 88% | 84% |
+| Abstention | 75% | 100% |
 
-One hallucination: asked for the period of a circular orbit while scoped to the
-calculus notes, it answered instead of refusing.
+**Hybrid removed the one hallucination.** Dense-only answered q14, a
+circular-orbit question, from the calculus notes. With keyword search fused in,
+that question retrieves nothing with matching terms, the evidence gets weaker,
+and the model refuses — which is the correct behaviour.
+
+**It helped where the baseline was weakest.** Multi-passage went from 62% to 75%
+correctness and 62% to 88% groundedness.
+
+**And it cost something.** Factual questions dropped from 100% to 75% on
+correctness and citation support. A keyword match can outrank a better semantic
+one for a question that was already answered well.
+
+Retrieval is unchanged at 84% in both, and unchanged in every category. Hybrid
+did not find different *pages*; it found better passages within them, and gave
+the model less to work with when there was nothing to find.
+
+With four questions per category, one question moves a category by 25 points.
+Read these as direction, not precision. Reranking has not been measured yet.
 
 ## Limitations, and what comes next
 
