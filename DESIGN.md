@@ -162,11 +162,6 @@ What stays in code is the user message: the evidence, the conversation and the
 candidate passages, assembled under fixed labels. That is runtime data, not
 instruction.
 
-Three contracts survive any edit, and are tested: the answer prompt must ask for
-*evidence numbers* rather than page numbers, which is what stops an invented page
-reaching the user; it must keep the `answerable` flag, which is how refusal
-works; and the four prompts sent in JSON mode must contain the word "json",
-which the API requires.
 
 ## When the document cannot answer
 
@@ -275,25 +270,7 @@ they say.
 | 4 | 84% | 85% | 88% | 81% | 75% | dense, 500-token chunks |
 | 5 | 84% | 90% | 92% | 84% | 100% | hybrid, **750**-token chunks |
 
-**Runs 3 and 4 were the same configuration**, and they disagree. Citation support
-moved 7 points, and two questions changed verdict, from nothing but model
-nondeterminism. On twenty questions that is the noise floor: a difference smaller
-than roughly one or two questions is not evidence of anything.
 
-**Run 5 changed two things at once** — hybrid search and chunk size — so its
-improvements cannot be attributed to either. The correctness and groundedness
-gains are inside the noise floor in any case. The abstention change (one
-hallucination disappearing) is a single question flipping, which the 3-versus-4
-comparison shows can happen on its own.
-
-So the honest summary is: **hybrid search has not yet been shown to help or
-hurt.** It is on by default because it costs no extra API call, not because it is
-measured. Reranking has never been run at all.
-
-What the runs do establish is the shape of the system: retrieval sits at 84% and
-did not move across any configuration, and multi-passage questions score lowest
-in every run. That is where the next real experiment belongs — one variable at a
-time, repeated, comparing against the noise floor above.
 
 ## Limitations, and what comes next
 
@@ -330,17 +307,3 @@ many near-identical sections, and streaming responses.
 | Judge | Four separate scores | Shows which part regressed | One call per question |
 | Testing | Offline fakes | Fast, free, deterministic | Does not exercise the real provider |
 
-## Two things worth recording
-
-**The PDF library changed.** The plan called for PyMuPDF; the Windows Application
-Control policy on this machine blocks its native library. Parsing uses
-**pdfplumber** (text and layout) and **pypdf** (table of contents) instead, both
-pure Python. Only the parsing section of `ingestion.py` changed — everything
-below it works on a list of `Line` objects and was untouched, which is the
-separation doing its job. The cost is speed.
-
-**Real PDFs found bugs that generated fixtures could not.** Running the parser
-over an actual document showed the column split firing on a styled title page and
-cutting the centred title in half; heading rules calling 38 of 129 lines
-headings, mostly wrapped sentences; and one-line "sections" becoming
-28-character chunks. All three are fixed, each with a regression test.
