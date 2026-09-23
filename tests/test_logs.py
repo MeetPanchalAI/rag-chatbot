@@ -132,7 +132,8 @@ def test_guards_reach_the_summary(store, settings, simple_pdf, caplog):
 def test_debug_explains_each_stage(store, settings, simple_pdf, caplog):
     embedder = indexed(store, settings, simple_pdf)
 
-    with caplog.at_level(logging.DEBUG):
+    # Levels are set on the "app" logger, so that is where DEBUG is turned on.
+    with caplog.at_level(logging.DEBUG, logger="app"):
         ask(store, embedder, settings, "What is the maximum?", FakeLLM(answer("Fifty.")))
 
     stages = " | ".join(
@@ -162,8 +163,19 @@ def test_configure_can_be_called_twice_without_doubling_output():
     assert len(logging.getLogger().handlers) == 1
 
 
-def test_noisy_libraries_are_quieted():
+def test_third_party_output_is_quiet_by_default():
+    """Named lists do not work: a vendored copy called httpx2 slipped past one.
+    The root sits at WARNING and only our own loggers are raised."""
     logs.configure("DEBUG")
 
-    for name in ("httpx", "openai", "pdfminer"):
-        assert logging.getLogger(name).level == logging.WARNING, name
+    for name in ("httpx", "httpx2", "openai", "pdfminer", "some.library.nobody.listed"):
+        assert logging.getLogger(name).getEffectiveLevel() == logging.WARNING, name
+
+    for name in ("app", "app.pipeline", "eval", "eval.run_eval"):
+        assert logging.getLogger(name).getEffectiveLevel() == logging.DEBUG, name
+
+
+def test_a_library_warning_still_gets_through():
+    logs.configure("INFO")
+
+    assert logging.getLogger("httpx").isEnabledFor(logging.WARNING)

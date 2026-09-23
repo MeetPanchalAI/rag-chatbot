@@ -12,8 +12,11 @@ together even when several are in flight. The id travels in a context variable
 rather than through function arguments, so the modules doing the work stay
 unaware of it.
 
-Third-party loggers are quieted: httpx logs a line per HTTP call and pdfminer is
-overwhelming at DEBUG, and neither tells you anything about this system.
+Third-party output is quiet by default: the root logger sits at WARNING and only
+this application's loggers get the configured level. Naming libraries one by one
+does not work - a vendored copy called "httpx2" slips straight past a list of
+exact names - so nothing is listed. A library warning still gets through, which
+is the part worth seeing.
 """
 
 import logging
@@ -27,8 +30,10 @@ _request_id: ContextVar[str] = ContextVar("request_id", default="-")
 FORMAT = "%(asctime)s %(levelname)-7s %(name)-18s [%(request_id)s] %(message)s"
 TIME_FORMAT = "%H:%M:%S"
 
-# Libraries that are chatty and say nothing about this system.
-QUIET = ("httpx", "httpcore", "openai", "pdfminer", "pypdf", "PIL", "urllib3")
+# Our own loggers. Everything else stays at WARNING.
+OURS = ("app", "eval")
+# uvicorn's startup messages are worth seeing; its access log duplicates ours.
+ALSO_INFORMATIVE = ("uvicorn.error",)
 
 
 class _AddRequestId(logging.Filter):
@@ -47,10 +52,12 @@ def configure(level: str = "INFO") -> None:
 
     root = logging.getLogger()
     root.handlers[:] = [handler]
-    root.setLevel(level.upper())
-
-    for name in QUIET:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    # Third-party libraries are only heard from when something is wrong.
+    root.setLevel(logging.WARNING)
+    for name in OURS:
+        logging.getLogger(name).setLevel(level.upper())
+    for name in ALSO_INFORMATIVE:
+        logging.getLogger(name).setLevel(min(logging.INFO, getattr(logging, level.upper(), logging.INFO)))
 
 
 @contextmanager

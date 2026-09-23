@@ -109,7 +109,7 @@ break, and `tests/test_prompts.py` checks them.
 pytest
 ```
 
-187 tests, all offline. The embedding model and the LLM are replaced by fakes and
+188 tests, all offline. The embedding model and the LLM are replaced by fakes and
 test PDFs are generated in memory, so no key and no network are needed.
 
 ## Evaluation

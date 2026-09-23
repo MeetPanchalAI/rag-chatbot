@@ -24,6 +24,11 @@ question + history ─► rewrite ─► retrieve ◄─────────
 | `pipeline.py` | Wires the flow; used by the API and the evaluation alike |
 | `providers.py` | The only file that talks to OpenAI |
 | `main.py` | HTTP: validation, wiring, error mapping |
+| `indexer.py` | Ingestion end to end: parse, embed, store; `ingest_cli.py` runs it |
+| `evaluation.py` | Scoring a run; `eval_runs.py` stores them |
+| `conversations.py` | Stored chats |
+| `db.py` | SQLite schema and connections |
+| `config.py`, `schemas.py`, `errors.py`, `text_utils.py` | Settings, models, error types, small helpers |
 
 Imports point one way: `main` → `pipeline` → `retrieval`/`generation` →
 `vector_store`/`ingestion` → `providers`/`schemas`/`config`.
@@ -175,10 +180,14 @@ across models and documents, and a fixed cutoff turns into false refusals. The
 model sees the evidence and is better placed to judge.
 
 That is a decision, not a certainty, so every request logs its top retrieval
-score. The first real run showed answerable questions clustering at a median of
-0.68 and unanswerable ones at 0.40 — good separation, but the ranges overlap
-(lowest answerable 0.47, highest unanswerable 0.52), so a threshold would trade
-one hallucination for one false refusal. That is why there isn't one.
+score. Measured on a **dense** run, answerable questions had a median of 0.68 and
+unanswerable ones 0.40 — good separation, but the ranges overlap (lowest
+answerable 0.47, highest unanswerable 0.52), so a threshold there would have
+traded one hallucination for one false refusal.
+
+With hybrid search on, that score is a rank-fusion score rather than a cosine
+similarity, so those numbers do not carry over and the question would have to be
+measured again before any threshold could be justified.
 
 ## Failure handling
 
@@ -234,8 +243,11 @@ flight.
 reranker that gave up — each is a WARNING with its reason, and the guards also
 appear on the INFO summary so a problem is visible without turning DEBUG on.
 
-**Noisy libraries are quieted.** httpx logs a line per HTTP call and pdfminer is
-overwhelming at DEBUG; neither says anything about this system.
+**Third-party output is quiet by default.** The root logger sits at WARNING and
+only this application's loggers are raised to the configured level. Naming
+libraries individually does not work — a vendored copy called `httpx2` slipped
+straight past a list of exact names — so nothing is listed. A library warning
+still gets through, which is the part worth seeing.
 
 Beyond the log, `"debug": true` on a request returns the full detail in the
 response — per-chunk scores, the evidence sent, the raw model output — and the
@@ -252,37 +264,36 @@ is stored with the settings that produced it, so two runs can be compared.
 Method and limits: **[EVAL.md](EVAL.md)**. Latest numbers:
 **[eval/results.md](eval/results.md)**.
 
-## What the runs show
+## What the runs show, and what they do not
 
-Dense-only against dense + BM25, same corpus, same questions, everything else
-unchanged:
+Four evaluation runs so far. Read carefully, they say less than they look like
+they say.
 
-| Metric | Dense | Hybrid |
-| --- | --- | --- |
-| Retrieval | 84% | 84% |
-| Correctness | 85% | 90% |
-| Groundedness | 88% | 92% |
-| Citation support | 88% | 84% |
-| Abstention | 75% | 100% |
+| Run | Retrieval | Correctness | Groundedness | Citations | Abstention | Configuration |
+| --- | --- | --- | --- | --- | --- | --- |
+| 3 | 84% | 85% | 88% | 88% | 75% | dense, 500-token chunks |
+| 4 | 84% | 85% | 88% | 81% | 75% | dense, 500-token chunks |
+| 5 | 84% | 90% | 92% | 84% | 100% | hybrid, **750**-token chunks |
 
-**Hybrid removed the one hallucination.** Dense-only answered q14, a
-circular-orbit question, from the calculus notes. With keyword search fused in,
-that question retrieves nothing with matching terms, the evidence gets weaker,
-and the model refuses — which is the correct behaviour.
+**Runs 3 and 4 were the same configuration**, and they disagree. Citation support
+moved 7 points, and two questions changed verdict, from nothing but model
+nondeterminism. On twenty questions that is the noise floor: a difference smaller
+than roughly one or two questions is not evidence of anything.
 
-**It helped where the baseline was weakest.** Multi-passage went from 62% to 75%
-correctness and 62% to 88% groundedness.
+**Run 5 changed two things at once** — hybrid search and chunk size — so its
+improvements cannot be attributed to either. The correctness and groundedness
+gains are inside the noise floor in any case. The abstention change (one
+hallucination disappearing) is a single question flipping, which the 3-versus-4
+comparison shows can happen on its own.
 
-**And it cost something.** Factual questions dropped from 100% to 75% on
-correctness and citation support. A keyword match can outrank a better semantic
-one for a question that was already answered well.
+So the honest summary is: **hybrid search has not yet been shown to help or
+hurt.** It is on by default because it costs no extra API call, not because it is
+measured. Reranking has never been run at all.
 
-Retrieval is unchanged at 84% in both, and unchanged in every category. Hybrid
-did not find different *pages*; it found better passages within them, and gave
-the model less to work with when there was nothing to find.
-
-With four questions per category, one question moves a category by 25 points.
-Read these as direction, not precision. Reranking has not been measured yet.
+What the runs do establish is the shape of the system: retrieval sits at 84% and
+did not move across any configuration, and multi-passage questions score lowest
+in every run. That is where the next real experiment belongs — one variable at a
+time, repeated, comparing against the noise floor above.
 
 ## Limitations, and what comes next
 
