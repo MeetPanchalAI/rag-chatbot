@@ -2,16 +2,14 @@
 
 ## Tools
 
-- **Claude Code** (Claude Opus 5) — the design review, the implementation, the
-  tests, and this documentation.
-- **ChatGPT** — drafting the first version of the design plan.
+- **Claude Code** (Claude Opus 5) — the design review, the implementation, the tests, and this documentation.
+- **ChatGPT** — generating the EVAL SET queries and their golden answers for measuring the performance .
 
 ## What they were used for
 
-The plan was drafted with ChatGPT, then reviewed against the brief before any
-code was written. Claude Code wrote the modules, the test suite, the evaluation
-harness and the docs. Every design decision was reviewed; the three below are
-where the AI suggestion was wrong or weaker than the alternative.
+The design plan was reviewed against the brief by claude code before any code was written. 
+Claude Code wrote the modules, the test suite, the evaluation harness and the docs. 
+Every design decision was reviewed; the three below are where the AI suggestion was wrong or weaker than the alternative.
 
 ## Where an AI suggestion was wrong
 
@@ -28,32 +26,18 @@ would have failed on the first real call.
 Changed to `LLM_TEMPERATURE=1.0`, configurable, with `LLM_REASONING_EFFORT`
 blank-able so the parameter is omitted for models that reject it.
 
-### A metric that would have hidden the failures it was for
+### Over-engineering beyond the required scope
 
-The plan scored retrieval as "did any retrieved chunk cover a gold page". For a
-question needing two passages, retrieving one scores a full hit — so the metric
-would look healthiest exactly where multi-passage retrieval was failing.
+The goal was to build a focused demo within a limited time frame, not a production-ready, full-fledged product. Building a production system would have required significantly more infrastructure and engineering effort, including extensive frontend components, large-scale vector databases, Dockerized services, and additional technology choices.
 
-Changed to the share of gold pages retrieved, so finding one of two scores 0.5.
-The first real run then showed multi-passage retrieval at 75% against 100% for
-factual questions, which is the gap the old metric would have hidden.
-
-### Identifying documents by filename
-
-The evaluation set names the document each question belongs to, and the first
-implementation matched those names to indexed documents by filename. Uploading
-the same PDFs under different names broke the whole run with "the evaluation set
-names documents that are not indexed", even though the indexed bytes were
-identical.
-
-Filename is a name a person chooses and can change, so it is the wrong key. A
-document id is a hash of the file contents, and the corpus is in the repository,
-so matching now goes by content first and falls back to filename and title.
+A key part of the work was therefore making deliberate trade-offs—evaluating which technologies and components were actually necessary and removing unnecessary complexity—to keep the implementation aligned with the requirements and scope defined in the problem statement.
 
 ## Where AI was clearly worth it
 
-Running the parser over a real PDF rather than a generated fixture found three
-defects at once — a column split cutting a centred title in half, heading rules
-classifying 38 of 129 lines as headings, and one-line sections becoming
-28-character chunks. Diagnosing and fixing all three with regression tests took
-minutes rather than an afternoon.
+AI significantly accelerated the implementation across multiple areas, including:
+
+Translating the design into a working implementation
+Writing comprehensive test cases
+Building the UI and supporting APIs
+Understanding the end-to-end workflow and execution logic
+Ensuring the implementation aligned with the required standards and conventions
