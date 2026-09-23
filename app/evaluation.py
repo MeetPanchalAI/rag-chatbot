@@ -20,6 +20,7 @@ scoping each question to its own is what makes them a real abstention test.
 
 import hashlib
 import json
+import logging
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Callable
@@ -36,6 +37,8 @@ QUESTIONS_FILE = Path(__file__).resolve().parent.parent / "eval" / "questions.js
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus"
 
 CATEGORIES = ("factual", "multi_passage", "follow_up", "unanswerable", "similar_sections")
+
+log = logging.getLogger(__name__)
 
 Progress = Callable[[int, int], None]
 
@@ -144,6 +147,12 @@ def run_evaluation(
     """Run every question. `doc_id` overrides the per-question document."""
     documents = resolve_documents(questions, store) if doc_id is None else {}
     rows: list[dict] = []
+    log.info(
+        "evaluating %d questions%s | judge %s",
+        len(questions),
+        " against one document" if doc_id else " across {} documents".format(len(documents)),
+        "on" if judge_llm is not None else "off",
+    )
 
     for index, question in enumerate(questions, start=1):
         scope = doc_id or documents.get(question.get("doc", ""))
@@ -168,7 +177,14 @@ def run_evaluation(
                 question.get("expected_points") or [],
             )
 
-        rows.append(score(question, response, verdict))
+        row = score(question, response, verdict)
+        log.debug(
+            "%s %s | %s | recall %s",
+            question["id"], question.get("type", ""),
+            "answered" if response.answerable else "refused",
+            "n/a" if row["recall"] is None else "{:.0%}".format(row["recall"]),
+        )
+        rows.append(row)
         if on_progress:
             on_progress(index, len(questions))
     return rows

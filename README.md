@@ -109,7 +109,7 @@ break, and `tests/test_prompts.py` checks them.
 pytest
 ```
 
-174 tests, all offline. The embedding model and the LLM are replaced by fakes and
+187 tests, all offline. The embedding model and the LLM are replaced by fakes and
 test PDFs are generated in memory, so no key and no network are needed.
 
 ## Evaluation
@@ -155,8 +155,21 @@ Everything comes from the environment; see `.env.example`. No secrets in code.
 | `RERANK` | `false` | Let the model reorder candidates. One extra call per question |
 | `RERANK_CANDIDATES` | `20` | How many candidates the reranker sees |
 | `MAX_CONTEXT_TOKENS` | `4000` | Ceiling on evidence sent to the model |
+| `LOG_LEVEL` | `INFO` | `INFO` is one line per question; `DEBUG` explains each stage |
 
 Works with any OpenAI-compatible endpoint via `OPENAI_BASE_URL`.
+
+## Logs
+
+`INFO` gives one line per question, ingest or evaluation run:
+
+```
+10:15:02 INFO  app.pipeline [a3f9c1e2] answered | retrieved 6, evidence 6, top 0.683, citations 2 | 1420ms
+```
+
+`LOG_LEVEL=DEBUG` adds a line per stage — rewrite, retrieve, rerank, evidence,
+and how long each model call took. Every line carries a request id, so one
+question's stages read together even with several in flight.
 
 ## Notes
 

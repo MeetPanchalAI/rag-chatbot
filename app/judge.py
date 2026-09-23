@@ -77,7 +77,7 @@ def judge_answer(
     try:
         raw = llm.complete(prompts.load("judge"), prompt, json_mode=True)
     except Exception as exc:
-        log.warning("Judge call failed: %s", exc)
+        log.warning("judge call failed: %s", exc)
         return JudgeResult(scores=dict(EMPTY.scores), reason=str(exc)[:200], failed=True)
 
     try:
@@ -85,7 +85,7 @@ def judge_answer(
     except (ValidationError, json.JSONDecodeError, ValueError) as exc:
         # An unscored question is honest. A defaulted score would quietly move
         # the averages and look like a change in the system.
-        log.warning("Judge returned unusable output: %s", exc)
+        log.warning("judge returned unusable output, leaving unscored: %s", exc)
         return JudgeResult(scores=dict(EMPTY.scores), reason="unparseable judge output", failed=True)
 
     return JudgeResult(

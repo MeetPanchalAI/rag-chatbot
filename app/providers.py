@@ -5,6 +5,7 @@ fakes and run offline.
 """
 
 import logging
+import time
 from typing import Protocol
 
 from app.config import Settings
@@ -23,6 +24,14 @@ class LLM(Protocol):
     def complete(self, system: str, user: str, json_mode: bool = False) -> str:
         """Return the model's text reply."""
         ...
+
+
+def _timed(fn, what: str):
+    """Run a provider call and note how long it took."""
+    started = time.perf_counter()
+    result = _retry_once(fn, what)
+    log.debug("%s took %.2fs", what, time.perf_counter() - started)
+    return result
 
 
 def _retry_once(fn, what: str):
@@ -79,9 +88,9 @@ class OpenAIEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        resp = _retry_once(
+        resp = _timed(
             lambda: self._client.embeddings.create(model=self._model, input=texts),
-            "embedding request",
+            "embedding {} texts".format(len(texts)),
         )
         return [d.embedding for d in resp.data]
 
@@ -111,7 +120,8 @@ class OpenAILLM:
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = _retry_once(
-            lambda: self._client.chat.completions.create(**kwargs), "LLM request"
+        resp = _timed(
+            lambda: self._client.chat.completions.create(**kwargs),
+            "{} call".format(self._model),
         )
         return resp.choices[0].message.content or ""

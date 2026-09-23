@@ -144,7 +144,7 @@ class Database:
                 with connection:
                     yield connection
             except Exception:
-                log.exception("Rolling back a failed write")
+                log.exception("rolling back a failed write")
                 raise
 
     def query(self, sql: str, *params) -> list[sqlite3.Row]:
@@ -190,7 +190,7 @@ def _add_missing_columns(connection, table: str, columns: dict[str, str]) -> Non
             connection.execute(
                 "ALTER TABLE {} ADD COLUMN {} {}".format(table, name, declaration)
             )
-            log.info("Added column %s.%s", table, name)
+            log.debug("added column %s.%s", table, name)
 
 
 def loads(value: str | None, fallback):

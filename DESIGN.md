@@ -19,6 +19,7 @@ question + history ─► rewrite ─► retrieve ◄─────────
 | `rerank.py` | Reorders candidates before answering |
 | `judge.py` | Scores answers during evaluation |
 | `prompts.py` | Reads the prompt files |
+| `logs.py` | Log format, levels and the request id |
 | `activity.py` | The record behind the dashboard |
 | `pipeline.py` | Wires the flow; used by the API and the evaluation alike |
 | `providers.py` | The only file that talks to OpenAI |
@@ -199,21 +200,47 @@ broken dependency is an error status.
 
 ## Observability
 
-Every `/chat` logs one JSON line — request id, rewritten query, how much was
-retrieved, top score, whether it was answerable, citation count, which guards
-fired, latency — and stores the same record in the database.
+Two logging levels, and the split between them is the design:
 
-A log is fine for tailing and useless for answering "how often does it refuse?".
-The **Activity tab** counts the last 500 questions: how many were answered, the
-median latency, the median retrieval score, and which guards fired, over a list
-of recent questions. Recording never blocks an answer; if the write fails the
-answer still returns.
+| Level | What it gives you |
+| --- | --- |
+| `INFO` | One line per unit of work: a question answered, a PDF indexed, an evaluation run |
+| `DEBUG` | One line per stage inside it: rewrite, retrieve, rerank, evidence, and how long each model call took |
 
-An evaluation run passes no recorder, so a benchmark does not fill the dashboard
-with questions nobody asked.
+Normal running is INFO, which is one line per question:
 
-`"debug": true` returns the full detail in the response: per-chunk scores, the
-evidence sent, and the raw model output.
+```
+10:15:02 INFO  app.pipeline [a3f9c1e2] answered | retrieved 6, evidence 6, top 0.683, citations 2 | 1420ms
+10:15:19 INFO  app.pipeline [7c2b40aa] refused  | retrieved 6, evidence 6, top 0.397, citations 0 | 980ms
+```
+
+When one of those looks wrong, `LOG_LEVEL=DEBUG` explains it without changing
+anything else:
+
+```
+10:15:02 DEBUG app.pipeline [a3f9c1e2] asked: 'What about international applicants?'
+10:15:02 DEBUG app.pipeline [a3f9c1e2] rewrote follow-up to: 'eligibility for international applicants'
+10:15:02 DEBUG app.pipeline [a3f9c1e2] retrieved 6/6 candidates by hybrid search, top score 0.683
+10:15:03 DEBUG app.providers [a3f9c1e2] gpt-5.6-luna call took 1.31s
+10:15:03 DEBUG app.pipeline [a3f9c1e2] evidence: 6 chunks, about 2180 tokens
+```
+
+**Every line carries a request id.** It travels in a context variable, not
+through function arguments, so the modules doing the work stay unaware of it.
+That is what lets one question's stages be read together when several are in
+flight.
+
+**Failures log themselves.** A guard firing, a retry, a discarded rewrite, a
+reranker that gave up — each is a WARNING with its reason, and the guards also
+appear on the INFO summary so a problem is visible without turning DEBUG on.
+
+**Noisy libraries are quieted.** httpx logs a line per HTTP call and pdfminer is
+overwhelming at DEBUG; neither says anything about this system.
+
+Beyond the log, `"debug": true` on a request returns the full detail in the
+response — per-chunk scores, the evidence sent, the raw model output — and the
+same per-question record is stored for the Activity dashboard, which counts the
+last 500 questions.
 
 ## Evaluation
 

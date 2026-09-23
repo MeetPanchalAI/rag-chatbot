@@ -74,7 +74,7 @@ def generate_answer(
         parsed = _parse(raw)
     except (ValidationError, json.JSONDecodeError, ValueError) as first_error:
         guards.append("json_retry")
-        log.warning("Model returned unparseable output; retrying once: %s", first_error)
+        log.warning("unparseable model output, retrying once: %s", first_error)
         retry_prompt = prompt + "\n\n" + prompts.load(
             "answer_retry", error=str(first_error)[:200]
         )
@@ -83,7 +83,7 @@ def generate_answer(
             parsed = _parse(raw)
         except (ValidationError, json.JSONDecodeError, ValueError) as second_error:
             guards.append("json_failed")
-            log.error("Model output still unparseable after retry: %s", second_error)
+            log.error("model output still unparseable after retry, refusing: %s", second_error)
             return GenerationResult(REFUSAL, False, [], raw_output=raw, guards=guards)
 
     valid: list[int] = []

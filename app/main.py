@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app import activity
 from app import conversations as convo
 from app import eval_runs
+from app import logs
 from app.config import Settings, get_settings
 from app.db import Database
 from app.errors import AppError, EvaluationRunning, FileTooLarge, UnsupportedFile
@@ -107,10 +108,7 @@ def create_app(
     providers: Providers | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
-    logging.basicConfig(
-        level=settings.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    logs.configure(settings.log_level)
     uses_real_providers = providers is None
     db = store.db if store else Database(settings.data_dir / "app.db")
     start_lock = threading.Lock()
@@ -306,7 +304,7 @@ def create_app(
                     "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
                 )
             except Exception as exc:  # the UI shows this; a run must not vanish
-                log.exception("Evaluation failed")
+                log.exception("evaluation failed")
                 eval_runs.fail(db, run_id, str(exc))
 
         threading.Thread(target=work, name="evaluation", daemon=True).start()

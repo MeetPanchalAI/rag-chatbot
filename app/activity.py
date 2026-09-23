@@ -37,7 +37,7 @@ def record(db: Database, row: dict) -> None:
                 ),
             )
     except Exception:
-        log.exception("Could not record activity")
+        log.exception("could not record activity")
 
 
 def _median(values: list[float]) -> float | None:

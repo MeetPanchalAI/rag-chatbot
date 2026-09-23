@@ -94,7 +94,7 @@ def _page_lines(page, page_number: int) -> list[tuple[int, float, Line]]:
     try:
         words = page.extract_words(extra_attrs=["size", "fontname"])
     except Exception as exc:  # a single damaged page should not kill the ingest
-        log.warning("Skipping page %d: %s", page_number, exc)
+        log.warning("skipping page %d: %s", page_number, exc)
         return []
     if not words:
         return []
@@ -170,7 +170,7 @@ def _read_outline(data: bytes) -> set[str]:
         reader = PdfReader(io.BytesIO(data))
         outline = reader.outline
     except Exception as exc:
-        log.info("No usable table of contents: %s", exc)
+        log.debug("no usable table of contents: %s", exc)
         return set()
 
     titles: set[str] = set()
@@ -285,10 +285,10 @@ def detect_headings(lines: list[Line], toc_titles: set[str]) -> dict[int, str]:
             headings[index] = text
 
     if len(headings) < 2:
-        log.info("No reliable headings found; citations will use page numbers only.")
+        log.info("no reliable headings found, citations will use page numbers only")
         return {}
     if len(headings) > len(lines) * MAX_HEADING_FRACTION:
-        log.info("Heading detection looked like noise (%d hits); ignoring.", len(headings))
+        log.info("heading detection looked like noise (%d hits), ignoring", len(headings))
         return {}
     return headings
 

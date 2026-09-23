@@ -4,11 +4,10 @@ Kept out of the API layer so the whole flow can be tested without HTTP, and so
 the evaluation script runs the exact same code path as a real request.
 """
 
-import json
 import logging
 import time
-import uuid
 
+from app import logs
 from app.config import Settings
 from app.generation import generate_answer
 from app.providers import Embedder, LLM
@@ -23,9 +22,10 @@ from app.schemas import (
     RetrievedChunk,
     Trace,
 )
+from app.text_utils import estimate_tokens
 from app.vector_store import VectorStore
 
-log = logging.getLogger("rag.chat")
+log = logging.getLogger(__name__)
 
 
 def build_citation(chunk: Chunk, include_document: bool) -> Citation:
@@ -88,28 +88,63 @@ def answer_question(
     record=None,
 ) -> ChatResponse:
     started = time.perf_counter()
-    request_id = uuid.uuid4().hex[:12]
+    # Every line logged inside this block carries the same id, so one question's
+    # stages can be read together even with several requests in flight.
+    with logs.request() as request_id:
+        return _answer(
+            request, store, embedder, llm, rewrite_llm, settings,
+            rerank_llm, record, started, request_id,
+        )
 
+
+def _answer(
+    request: ChatRequest,
+    store: VectorStore,
+    embedder: Embedder,
+    llm: LLM,
+    rewrite_llm: LLM,
+    settings: Settings,
+    rerank_llm: LLM | None,
+    record,
+    started: float,
+    request_id: str,
+) -> ChatResponse:
     if request.doc_id is not None:
         store.get_document(request.doc_id)  # raises DocumentNotFound
+
+    log.debug(
+        "asked: %r%s", request.question[:120],
+        " (in document {})".format(request.doc_id[:12]) if request.doc_id else "",
+    )
 
     query, was_rewritten = rewrite_query(
         rewrite_llm, request.question, request.history, settings.max_history_turns
     )
+    if was_rewritten:
+        log.debug("rewrote follow-up to: %r", query[:120])
+
     # With reranking on we fetch a wider pool and let the model narrow it.
     wanted = settings.rerank_candidates if settings.rerank else settings.retriever_top_k
     retrieved = retrieve(
         store, embedder, query, wanted, request.doc_id,
         hybrid=settings.hybrid_search, rrf_k=settings.rrf_k,
     )
+    log.debug(
+        "retrieved %d/%d candidates by %s search%s",
+        len(retrieved), wanted, "hybrid" if settings.hybrid_search else "dense",
+        ", top score {:.3f}".format(retrieved[0].score) if retrieved else " (nothing)",
+    )
 
     rerank_guards: list[str] = []
     if settings.rerank and retrieved:
+        before = len(retrieved)
         retrieved, rerank_guards = rerank(
             rerank_llm or llm, query, retrieved, settings.retriever_top_k
         )
+        log.debug("reranked %d candidates down to %d", before, len(retrieved))
 
     evidence, used = build_evidence(retrieved, settings.max_context_tokens)
+    log.debug("evidence: %d chunks, about %d tokens", len(used), estimate_tokens(evidence))
 
     result = generate_answer(
         llm,
@@ -143,7 +178,18 @@ def answer_question(
         "guards": guards,
         "latency_ms": round((time.perf_counter() - started) * 1000),
     }
-    log.info(json.dumps(entry))
+    # One line per question. Everything above it is DEBUG, so normal running
+    # gives you exactly this, and turning on DEBUG explains any one of them.
+    log.info(
+        "%s | retrieved %d, evidence %d%s, citations %d | %dms%s",
+        "answered" if result.answerable else "refused",
+        len(retrieved),
+        len(used),
+        ", top {:.3f}".format(top_score) if top_score is not None else "",
+        len(citations),
+        entry["latency_ms"],
+        " | guards: " + ", ".join(guards) if guards else "",
+    )
     # The API stores this; the evaluation passes nothing, so a run does not fill
     # the dashboard with questions nobody asked.
     if record:

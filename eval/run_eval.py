@@ -11,6 +11,7 @@ import argparse
 import json
 from pathlib import Path
 
+from app import logs
 from app.config import get_settings
 from app.db import Database
 from app.evaluation import load_questions, run_evaluation, write_report
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = get_settings()
+    logs.configure(settings.log_level)
     store = VectorStore(Database(settings.data_dir / "app.db"), settings.data_dir)
     store.load()
     if store.chunk_count == 0:

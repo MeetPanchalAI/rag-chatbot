@@ -51,7 +51,7 @@ def rerank(
         raw = llm.complete(prompts.load("rerank"), prompt, json_mode=True)
         parsed = Order.model_validate_json(_FENCE.sub("", raw.strip()).strip())
     except Exception as exc:
-        log.warning("Rerank failed, keeping the original order: %s", exc)
+        log.warning("rerank failed, keeping the original order: %s", exc)
         return candidates[:top_k], ["rerank_failed"]
 
     guards: list[str] = []

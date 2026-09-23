@@ -38,7 +38,7 @@ def rewrite_query(
 
     # A rewrite that is empty or rambling is worse than the original question.
     if not rewritten or len(rewritten) > max(400, len(question) * 6):
-        log.warning("Discarding an unusable query rewrite; using the original question.")
+        log.warning("unusable query rewrite, using the original question")
         return question, False
     return rewritten, rewritten.lower() != question.strip().lower()
 

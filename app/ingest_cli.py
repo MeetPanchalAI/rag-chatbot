@@ -12,6 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
+from app import logs
 from app.config import get_settings
 from app.db import Database
 from app.errors import AppError
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("paths", nargs="+", type=Path, help="PDF files to ingest")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logs.configure(get_settings().log_level)
     settings = get_settings()
     store = VectorStore(Database(settings.data_dir / "app.db"), settings.data_dir)
     store.load()

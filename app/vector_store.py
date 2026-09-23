@@ -75,7 +75,7 @@ class VectorStore:
         )
         self._build_keyword_index()
         log.info(
-            "Loaded %d chunks from %d documents.", len(self.chunks), len(self.documents)
+            "loaded %d chunks from %d documents", len(self.chunks), len(self.documents)
         )
 
     def _migrate_legacy_files(self) -> None:
@@ -105,7 +105,7 @@ class VectorStore:
         raw = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
         infos = [DocumentInfo.model_validate(value) for value in raw.values()]
 
-        log.info("Migrating %d chunks from the file index into SQLite.", len(chunks))
+        log.info("migrating %d chunks from the file index into SQLite", len(chunks))
         with self.db.write() as connection:
             for info in infos:
                 _insert_document(connection, info, source_file=None)
@@ -119,7 +119,7 @@ class VectorStore:
             path = self.dir / name
             if path.exists():
                 path.rename(path.with_suffix(path.suffix + ".migrated"))
-        log.info("Migration complete; the old files were renamed to *.migrated.")
+        log.info("migration complete, old files renamed to *.migrated")
 
     # --- writing ---
 
@@ -174,7 +174,7 @@ class VectorStore:
         )
         self.documents.pop(doc_id, None)
         self._build_keyword_index()
-        log.info("Deleted document %s (%s).", doc_id[:12], info.filename)
+        log.info("deleted %s | %d chunks removed", info.filename, info.chunks)
         return info
 
     def _build_keyword_index(self) -> None:
