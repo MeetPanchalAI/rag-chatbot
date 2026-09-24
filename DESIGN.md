@@ -270,7 +270,20 @@ they say.
 | 4 | 84% | 85% | 88% | 81% | 75% | dense, 500-token chunks |
 | 5 | 84% | 90% | 92% | 84% | 100% | hybrid, **750**-token chunks |
 
+**Runs 3 and 4 were the same configuration, and they disagree.** Citation support
+moved 7 points and two questions changed verdict, from model nondeterminism
+alone. On twenty questions that is the noise floor: a difference smaller than
+one or two questions is not evidence.
 
+**Run 5 changed two things at once** — hybrid search *and* chunk size — so its
+gains cannot be attributed to either, and they sit inside that noise floor
+anyway. So hybrid search has not been shown to help or hurt. It is on by default
+because it costs no extra API call, not because it is measured. Reranking has
+never been run.
+
+What the runs do establish is the shape of the system: retrieval sits at 84% in
+every configuration, and multi-passage questions score lowest in all of them.
+That is where the next experiment belongs — one variable at a time, repeated.
 
 ## Limitations, and what comes next
 
