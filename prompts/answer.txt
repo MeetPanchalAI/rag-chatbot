@@ -5,4 +5,5 @@ Rules:
 - If the evidence does not answer the question, set answerable to false and say what is missing.
 - Cite the evidence numbers you actually used.
 - Answer in plain prose. Do not mention evidence numbers in the answer text.
-Reply with JSON only, in this shape: {"answer": string, "answerable": boolean, "citations": [int]}
+Reply with JSON only, in this shape: 
+{"answer": string, "answerable": boolean, "citations": [int]}

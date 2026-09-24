@@ -18,13 +18,13 @@ cp .env.example .env             # then put your OpenAI key in it
 ## Run
 
 ```bash
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 
 Open **http://127.0.0.1:8000** for the UI, or `/docs` for the API.
 
-`corpus/` holds the two PDFs the evaluation is built on. Any PDF works — upload
-one in the UI, or pass it to the same command.
+`corpus/` holds the two PDFs the evaluation is built on. Index them, or any
+other PDF, with `python -m app.ingest_cli <file.pdf>` — or upload one in the UI.
 
 ## The UI
 
@@ -175,6 +175,9 @@ question's stages read together even with several in flight.
 - **Large PDFs**: use `python -m app.ingest_cli`. A long document is thousands of
   chunks and several minutes of embedding calls, which outlasts an HTTP timeout.
   The upload endpoint is capped by `MAX_UPLOAD_MB`.
+- **`python -m uvicorn`**, not `uvicorn`, so the server runs on the interpreter
+  you installed into. It also avoids the launcher shim, which some locked-down
+  Windows machines refuse to execute.
 - **Scanned PDFs** are rejected with a clear message. There is no OCR.
 - **Page numbers** are PDF positions, not the numbers printed on the page. They
   differ in a document with front matter.
