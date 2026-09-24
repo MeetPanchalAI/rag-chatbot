@@ -18,7 +18,6 @@ cp .env.example .env             # then put your OpenAI key in it
 ## Run
 
 ```bash
-python -m app.ingest_cli corpus/free221.pdf corpus/Lecture10.pdf
 uvicorn app.main:app --reload
 ```
 
